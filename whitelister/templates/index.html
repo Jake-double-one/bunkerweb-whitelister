@@ -97,8 +97,11 @@
             {% elif row.expired %}
             <span class="entry-until expired">{{ t('list.expired', date=e.expires_at | dt) }}</span>
             {% else %}
-            <span class="entry-until">{{ t('list.until', date=e.expires_at | dt, remaining=row.remaining_text) }}</span>
-            <div class="rail-track" aria-hidden="true"><span class="seg-work" id="rail-{{ e.id }}"></span></div>
+            <span class="entry-until">{{ t('list.until', date=e.expires_at | dt) }}</span>
+            <div class="rail-line">
+              <div class="rail-track" aria-hidden="true"><span class="seg-work" id="rail-{{ e.id }}"></span></div>
+              <span class="entry-left">{{ t('list.remaining', remaining=row.remaining_text) }}</span>
+            </div>
             {% endif %}
           </div>
           <div class="entry-actions">
