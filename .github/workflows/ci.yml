@@ -59,12 +59,21 @@ jobs:
           docker exec wl sh -c 'id -u' | grep -q '^10001$'
           docker logs wl
           docker rm -f wl
-      - name: Scan image
-        uses: aquasecurity/trivy-action@0.33.1
+      # Full report for the Security tab (every severity, never fails the build) ...
+      - name: Scan image (report)
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: bunkerweb-whitelister:ci
           format: sarif
           output: trivy.sarif
+          ignore-unfixed: true
+          exit-code: "0"
+      # ... and the gate: any fixable HIGH/CRITICAL vulnerability or secret fails the build.
+      - name: Scan image (gate)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: bunkerweb-whitelister:ci
+          format: table
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"

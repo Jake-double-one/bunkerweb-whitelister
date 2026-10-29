@@ -431,3 +431,141 @@ def test_healthz_and_hidden_docs(make_client):
             assert (await c.get("/openapi.json")).status_code == 404
 
     run(go())
+
+
+# ------------------------------------------------------------------ audit regressions
+
+
+def test_extend_reapplies_current_policy(env, fake_bw, tmp_path):
+    from whitelister.app import create_app
+    from whitelister.bunkerweb import BunkerWebClient
+    from whitelister.entries import EntryStore
+
+    def build(**overrides):
+        env(**overrides)
+        settings = load_settings()
+        store = EntryStore(tmp_path / "db.sqlite3")  # file-backed: the second app reopens the same rows
+        bw = BunkerWebClient(settings)
+        bw._client = httpx.AsyncClient(transport=httpx.MockTransport(fake_bw.handler), base_url=settings.bw_api_url or "http://x")
+        return create_app(settings, store=store, client=bw), store
+
+    app, store = build(ALLOW_PRIVATE="yes", MIN_PREFIX_V4="8")
+
+    async def seed():
+        async with app.router.lifespan_context(app), await _client(app) as c:
+            await login(c)
+            token = csrf_of((await c.get("/")).text)
+            await c.post("/entries", data={"network": "10.0.0.0/8", "duration": "7", "_csrf": token})
+            return store.find("10.0.0.0/8")
+
+    entry = run(seed())
+    assert entry is not None
+
+    app2, store2 = build(ALLOW_PRIVATE="no", MIN_PREFIX_V4="16")  # same rows, tightened policy
+
+    async def go():
+        async with app2.router.lifespan_context(app2), await _client(app2) as c:
+            await login(c)
+            token = csrf_of((await c.get("/")).text)
+            for data in ({"duration": "14"}, {"duration": "forever"}):
+                r = await c.post(f"/entries/{entry.id}/extend", data={**data, "_csrf": token})
+                assert r.status_code == 303
+                assert "/16 or smaller" in (await c.get("/")).text
+                assert store2.get(entry.id).expires_at == entry.expires_at
+
+    run(go())
+
+
+def test_scope_id_cannot_smuggle_lines_into_the_list(make_client):
+    app, store, _ = make_client()
+
+    async def go():
+        async with app.router.lifespan_context(app), await _client(app) as c:
+            await login(c)
+            token = csrf_of((await c.get("/")).text)
+            r = await c.post("/entries", data={"network": "2a00::1%x\n127.0.0.1", "duration": "7", "_csrf": token})
+            assert r.status_code == 303 and store.count() == 0
+            # a legacy row written before the parser fix never contributes more than one line
+            store.upsert("2a00::1%x\n127.0.0.1", "legacy", None, datetime.now(UTC), "")
+            store.upsert("203.0.113.5", "ok", None, datetime.now(UTC), "")
+            assert (await c.get("/ips.txt")).text == "# bunkerweb-whitelister\n203.0.113.5\n"
+
+    run(go())
+
+
+def test_syncer_survives_a_store_error_and_healthz_reflects_liveness(make_client):
+    app, store, _ = make_client()
+
+    async def go():
+        async with app.router.lifespan_context(app), await _client(app) as c:
+            syncer = app.state.syncer
+            calls = {"n": 0}
+            original = store.expired_between
+
+            def boom(*a, **k):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    raise RuntimeError("database is locked")
+                return original(*a, **k)
+
+            store.expired_between = boom
+            syncer.request_refresh()
+            await asyncio.sleep(0.2)
+            assert syncer.alive()
+            assert (await c.get("/healthz")).status_code == 200
+            syncer.request_refresh()
+            await asyncio.sleep(0.2)
+            assert calls["n"] >= 2 and syncer.alive()
+            # a dead loop is visible to the container healthcheck
+            await syncer.stop()
+            assert (await c.get("/healthz")).status_code == 503
+
+    run(go())
+
+
+def test_persistent_cache_miss_is_reported_as_error(make_client, fake_bw):
+    app, _, _ = make_client()
+    fake_bw.cache_exists = False
+
+    async def go():
+        async with app.router.lifespan_context(app):
+            client = app.state.client
+            await client.trigger_refresh()  # first miss: the job is scheduled, counts as success
+            assert client.status.ok
+            with pytest.raises(RuntimeError, match="WHITELIST_URL"):
+                await client.trigger_refresh()  # still missing after a job ran: a name mismatch
+            assert "WHITELIST_URL" in (client.status.last_error or "")
+            fake_bw.cache_exists = True
+            await client.trigger_refresh()
+            assert client.status.ok and client.status.misses == 0
+
+    run(go())
+
+
+def test_footer_never_shows_the_list_token(make_client):
+    app, _, _ = make_client(LIST_TOKEN="s3cret-token", WHITELIST_URL="http://whitelister:8080/ips.txt?token=s3cret-token")
+
+    async def go():
+        async with app.router.lifespan_context(app), await _client(app) as c:
+            await login(c)
+            page = (await c.get("/")).text
+            assert "s3cret-token" not in page and "http://whitelister:8080/ips.txt" in page
+
+    run(go())
+
+
+def test_placeholder_secrets_are_refused(env):
+    env(WHITELISTER_PASSWORD="change-me-to-at-least-12-characters")
+    with pytest.raises(ConfigError):
+        load_settings()
+    env(LIST_TOKEN="change-me-list-token")
+    with pytest.raises(ConfigError):
+        load_settings()
+    env(LIST_TOKEN_FILE=None)
+
+
+def test_empty_list_token_file_means_no_token(env, tmp_path):
+    empty = tmp_path / "empty"
+    empty.write_text("\n")
+    env(LIST_TOKEN_FILE=str(empty))
+    assert load_settings().list_token is None

@@ -10,12 +10,9 @@ services:
     image: ghcr.io/jake-double-one/bunkerweb-whitelister:0.1.0
     container_name: whitelister
     restart: unless-stopped
-    env_file: .env                      # see .env.example; secrets can also be mounted and named via *_FILE
-    environment:
-      - TZ=Europe/Berlin
-      - TRUSTED_PROXIES=10.20.30.0/24   # the network BunkerWeb talks to us from
-      - WHITELIST_URL=http://whitelister:8080/ips.txt
-      - BW_API_URL=http://bw-api:8888
+    # Everything comes from .env (see .env.example). Do not repeat keys under `environment:`
+    # here: Compose lets `environment:` win over `env_file:`, which silently overrides .env edits.
+    env_file: .env
     volumes:
       - whitelister-data:/data
     networks:
@@ -46,11 +43,21 @@ services:
       - "bunkerweb.LIMIT_REQ_RATE_1=6r/m"
 
   # ---- BunkerWeb side (abbreviated; see the BunkerWeb docs for the full services) ----
+  bunkerweb:
+    image: bunkerity/bunkerweb:1.6.17
+    # A fixed address so TRUSTED_PROXIES in .env can name the ingress alone (10.20.30.2/32), not the
+    # whole bw-services subnet: every other container on that network would otherwise count as proxy.
+    networks:
+      bw-universe:
+      bw-services:
+        ipv4_address: 10.20.30.2
+
   bw-scheduler:
     image: bunkerity/bunkerweb-scheduler:1.6.17
     environment:
       - USE_WHITELIST=yes
-      - WHITELIST_IP_URLS=http://whitelister:8080/ips.txt
+      # Must be byte-identical to WHITELIST_URL in .env (the whitelister names BunkerWeb's cache file from it).
+      - WHITELIST_IP_URLS=http://whitelister:8080/ips.txt?token=${LIST_TOKEN}
       # ... your other global settings
     networks:
       - bw-universe
@@ -62,6 +69,7 @@ services:
       - API_USERNAME=whitelister
       - API_PASSWORD=${BW_API_PASSWORD}
       - API_WHITELIST_IPS=10.20.40.0/24   # bw-universe only: that is where the whitelister talks from
+      # Give this user cache_read, cache_delete and job_execute only (API_ACL_BOOTSTRAP_FILE), not admin.
       - API_RATE_LIMIT_RULES=DELETE /cache* 30r/m
       # ... database settings shared with the scheduler
     networks:

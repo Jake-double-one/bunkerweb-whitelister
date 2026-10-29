@@ -36,12 +36,16 @@ def normalize_label(raw: str | None) -> str:
 def parse_network(raw: str, settings: Settings) -> IPNetwork:
     """Parse an address or CIDR. Returns a normalized network object."""
     text = (raw or "").strip()
-    if not text or len(text) > 64:
+    # An IPv6 scope id ("%eth0") is never meaningful for a reverse-proxy whitelist, and the stdlib
+    # accepts almost any character inside it (newlines included): refuse it and any inner whitespace.
+    if not text or len(text) > 64 or "%" in text or any(ch.isspace() for ch in text):
         raise ValidationError("error.ip_invalid")
     try:
         net = ipaddress.ip_network(text, strict=False)
     except ValueError as exc:
         raise ValidationError("error.ip_invalid") from exc
+    if net.version == 6 and net.network_address.scope_id is not None:
+        raise ValidationError("error.ip_invalid")
     min_prefix = settings.min_prefix_v4 if net.version == 4 else settings.min_prefix_v6
     if net.prefixlen < min_prefix:
         raise ValidationError("error.prefix_too_wide", min=min_prefix)
@@ -242,7 +246,33 @@ def _iso(value: datetime | None) -> str | None:
     return value.astimezone(UTC).replace(tzinfo=None, microsecond=0).isoformat()
 
 
+def is_list_token(value: str) -> bool:
+    """One printable, whitespace-free token that parses as a network: the only thing a list line may be."""
+    if not value or not value.isprintable() or "%" in value or any(ch.isspace() for ch in value):
+        return False
+    try:
+        ipaddress.ip_network(value, strict=False)
+    except ValueError:
+        return False
+    return True
+
+
 def render_list(networks: list[str]) -> str:
-    """The plain-text list BunkerWeb downloads: one entry per line."""
-    lines = ["# bunkerweb-whitelister", *networks]
+    """The plain-text list BunkerWeb downloads: one validated entry per line.
+
+    Defensive at the sink as well: a stored value can never contribute more than one line,
+    which also covers rows written before the parser refused scope ids.
+    """
+    lines = ["# bunkerweb-whitelister", *(n for n in networks if is_list_token(n))]
     return "\n".join(lines) + "\n"
+
+
+def policy_violations(entries: list[Entry], settings: Settings) -> list[Entry]:
+    """Stored rows that no longer pass the current entry policy (after a tightening of the settings)."""
+    bad = []
+    for e in entries:
+        try:
+            parse_network(e.network, settings)
+        except ValidationError:
+            bad.append(e)
+    return bad

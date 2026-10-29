@@ -19,6 +19,7 @@ dev = ["pytest", "ruff", "pip-tools"]
 
 [tool.ruff]
 line-length = 140
+exclude = ["docs"]
 target-version = "py313"
 
 [tool.ruff.lint]
