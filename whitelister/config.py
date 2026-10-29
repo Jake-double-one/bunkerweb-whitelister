@@ -25,6 +25,9 @@ PRIVATE_NETWORKS = (
 )
 
 
+PLACEHOLDER_SECRETS = frozenset({"change-me-to-at-least-12-characters", "change-me-too", "change-me-list-token"})
+
+
 class ConfigError(RuntimeError):
     pass
 
@@ -159,6 +162,8 @@ def load_settings(env_data_dir: str | None = None) -> Settings:
         raise ConfigError("Set either WHITELISTER_PASSWORD or WHITELISTER_PASSWORD_HASH, not both.")
     if password and len(password) < 12:
         raise ConfigError("WHITELISTER_PASSWORD must be at least 12 characters long.")
+    if password and password in PLACEHOLDER_SECRETS:
+        raise ConfigError("WHITELISTER_PASSWORD still holds the placeholder from .env.example; choose your own.")
 
     generated = False
     secret_raw = _read("SESSION_SECRET")
@@ -177,6 +182,8 @@ def load_settings(env_data_dir: str | None = None) -> Settings:
     bw_api_token = _read("BW_API_TOKEN")
     bw_api_username = _read("BW_API_USERNAME")
     bw_api_password = _read("BW_API_PASSWORD")
+    if bw_api_password in PLACEHOLDER_SECRETS:
+        raise ConfigError("BW_API_PASSWORD still holds the placeholder from .env.example; choose your own.")
     if bw_api_url and not bw_api_token and not (bw_api_username and bw_api_password):
         raise ConfigError("BW_API_URL is set: provide BW_API_TOKEN or BW_API_USERNAME and BW_API_PASSWORD.")
     whitelist_url = _read("WHITELIST_URL")
@@ -198,6 +205,10 @@ def load_settings(env_data_dir: str | None = None) -> Settings:
 
     client_ip_header = (_read("CLIENT_IP_HEADER", "X-Forwarded-For") or "X-Forwarded-For").strip()
 
+    list_token = _read("LIST_TOKEN") or None  # an empty value (e.g. an empty secret file) means "no token", never ""
+    if list_token in PLACEHOLDER_SECRETS:
+        raise ConfigError("LIST_TOKEN still holds the placeholder from .env.example; choose your own.")
+
     return Settings(
         password=password,
         password_hash=password_hash,
@@ -210,7 +221,7 @@ def load_settings(env_data_dir: str | None = None) -> Settings:
         cookie_secure=_bool("COOKIE_SECURE", True),
         hsts=_bool("HSTS", False),
         list_allowed_networks=_networks("LIST_ALLOWED_NETWORKS", PRIVATE_NETWORKS),
-        list_token=_read("LIST_TOKEN"),
+        list_token=list_token,
         duration_presets=_presets("DURATION_PRESETS", "1 7 14 30"),
         max_days=_int("MAX_DAYS", 3650, minimum=1, maximum=36500),
         expired_retention_days=_int("EXPIRED_RETENTION_DAYS", 7, minimum=0, maximum=365),
