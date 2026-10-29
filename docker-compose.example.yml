@@ -1,0 +1,83 @@
+# Example: the whitelister next to a BunkerWeb 1.6 stack (bunkerweb, bw-scheduler, bw-api).
+# Copy what you need into your own compose file; the BunkerWeb services are only sketched here.
+#
+# Flow: the scheduler downloads http://whitelister:8080/ips.txt (WHITELIST_IP_URLS), the
+# whitelister tells the API to drop the cached copy whenever the list changes, and the
+# scheduler then re-downloads it and reloads BunkerWeb within seconds.
+
+services:
+  whitelister:
+    image: ghcr.io/jake-double-one/bunkerweb-whitelister:0.1.0
+    container_name: whitelister
+    restart: unless-stopped
+    env_file: .env                      # see .env.example; secrets can also be mounted and named via *_FILE
+    environment:
+      - TZ=Europe/Berlin
+      - TRUSTED_PROXIES=10.20.30.0/24   # the network BunkerWeb talks to us from
+      - WHITELIST_URL=http://whitelister:8080/ips.txt
+      - BW_API_URL=http://bw-api:8888
+    volumes:
+      - whitelister-data:/data
+    networks:
+      - bw-services                     # reachable by bunkerweb (reverse proxy) and bw-scheduler (list download)
+      - bw-universe                     # reachable to bw-api
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,mode=1777,noexec,nosuid,nodev
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    user: "10001:10001"
+    mem_limit: 128m
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    labels:
+      # Publish the UI through BunkerWeb (autoconf). Adjust the host name.
+      - "bunkerweb.SERVER_NAME=whitelist.example.com"
+      - "bunkerweb.USE_REVERSE_PROXY=yes"
+      - "bunkerweb.REVERSE_PROXY_HOST=http://whitelister:8080"
+      - "bunkerweb.REVERSE_PROXY_URL=/"
+      - "bunkerweb.USE_WHITELIST=no"     # never let the whitelist bypass checks on the whitelister itself
+      - "bunkerweb.LIMIT_REQ_URL_1=/login"
+      - "bunkerweb.LIMIT_REQ_RATE_1=6r/m"
+
+  # ---- BunkerWeb side (abbreviated; see the BunkerWeb docs for the full services) ----
+  bw-scheduler:
+    image: bunkerity/bunkerweb-scheduler:1.6.17
+    environment:
+      - USE_WHITELIST=yes
+      - WHITELIST_IP_URLS=http://whitelister:8080/ips.txt
+      # ... your other global settings
+    networks:
+      - bw-universe
+      - bw-services
+
+  bw-api:
+    image: bunkerity/bunkerweb-api:1.6.17
+    environment:
+      - API_USERNAME=whitelister
+      - API_PASSWORD=${BW_API_PASSWORD}
+      - API_WHITELIST_IPS=10.20.40.0/24   # bw-universe only: that is where the whitelister talks from
+      - API_RATE_LIMIT_RULES=DELETE /cache* 30r/m
+      # ... database settings shared with the scheduler
+    networks:
+      - bw-universe
+
+volumes:
+  whitelister-data:
+
+networks:
+  bw-universe:
+    name: bw-universe
+    ipam:
+      config:
+        - subnet: 10.20.40.0/24
+  bw-services:
+    name: bw-services
+    ipam:
+      config:
+        - subnet: 10.20.30.0/24

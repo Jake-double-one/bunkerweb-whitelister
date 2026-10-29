@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ t('login.eyebrow') }} · {{ t('app.title') }}{% endblock %}
+{% block header_status %}<span class="status">{{ t('header.not_logged_in') }}</span>{% endblock %}
+
+{% block content %}
+  <div class="lede">
+    <p class="eyebrow">{{ t('hero.eyebrow') }}</p>
+    <h1>{{ client_ip or t('hero.unknown_ip') }}</h1>
+  </div>
+
+  <form class="card narrow" method="post" action="/login" autocomplete="on">
+    <p class="eyebrow">{{ t('login.eyebrow') }}</p>
+    <div class="field">
+      <label for="password">{{ t('login.password') }}</label>
+      <input id="password" name="password" type="password" class="wide" autocomplete="current-password" autofocus required maxlength="1024">
+    </div>
+    <div class="row">
+      <button type="submit" class="chip chip-main">{{ t('login.submit') }}</button>
+      <span class="micro">{{ t('login.session_note', hours=session_hours) }}</span>
+    </div>
+    {% if error %}
+    <div class="hint alert" role="alert"><span>{{ error }}</span></div>
+    {% endif %}
+  </form>
+{% endblock %}
+
+{% block footer %}{{ t('login.footer') }}{% endblock %}

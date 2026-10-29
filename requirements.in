@@ -1,0 +1,7 @@
+# Runtime dependencies. Compile with: scripts/compile-requirements.sh
+fastapi
+uvicorn
+jinja2
+python-multipart
+httpx
+itsdangerous

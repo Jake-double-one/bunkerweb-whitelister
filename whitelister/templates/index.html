@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block header_status %}<span class="status" data-state="{{ api_state }}">{{ api_state_text }}</span>{% endblock %}
+{% block header_actions %}
+<form method="post" action="/logout"><input type="hidden" name="_csrf" value="{{ csrf }}"><button type="submit" class="chip">{{ t('header.logout') }}</button></form>
+{% endblock %}
+
+{% block head_extra %}
+<style nonce="{{ nonce }}">{% for row in entries %}#rail-{{ row.entry.id }}{width:{{ row.rail }}%}{% endfor %}</style>
+{% endblock %}
+
+{% block content %}
+  <div class="lede">
+    <p class="eyebrow">{{ t('hero.eyebrow') }}</p>
+    <h1>{{ client_ip or t('hero.unknown_ip') }}</h1>
+    <p class="note">
+      {% if not client_ip %}{{ t('hero.no_ip') }}
+      {% elif listed and listed.expires_at is none %}{{ t('hero.listed_forever') }}
+      {% elif listed %}{{ t('hero.listed', until=listed.expires_at | dt) }}
+      {% else %}{{ t('hero.not_listed') }}{% endif %}
+    </p>
+  </div>
+
+  {% if flash %}
+  <div class="hint{% if flash.kind == 'alert' %} alert{% endif %}" role="status"><span>{{ flash.text }}</span></div>
+  {% endif %}
+
+  <form class="card" method="post" action="/entries" data-duration-group>
+    <p class="eyebrow">{{ t('add.eyebrow') }}</p>
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <div class="field">
+      <label for="network">{{ t('add.ip_label') }}</label>
+      <div class="row">
+        <input id="network" name="network" type="text" class="mono ip" value="{{ client_ip or '' }}" spellcheck="false" autocomplete="off" required maxlength="64" inputmode="text">
+        {% if client_ip %}<button type="button" class="chip on" id="my-ip" data-ip="{{ client_ip }}">{{ t('add.my_ip') }}</button>{% endif %}
+        <button type="button" class="chip" id="net24">{{ t('add.net24') }}</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="label">{{ t('add.label') }}</label>
+      <input id="label" name="label" type="text" class="wide" placeholder="{{ t('add.label_placeholder') }}" maxlength="64" autocomplete="off">
+    </div>
+    <fieldset class="field">
+      <legend class="label">{{ t('add.duration') }}</legend>
+      <div class="row chips">
+        {% for d in presets %}
+        <input type="radio" name="duration" id="dur-{{ d }}" value="{{ d }}"{% if d == default_preset %} checked{% endif %}>
+        <label class="chip" for="dur-{{ d }}">{{ t.plural('add.day', d) }}</label>
+        {% endfor %}
+        <input type="radio" name="duration" id="dur-forever" value="forever">
+        <label class="chip" for="dur-forever">{{ t('add.forever') }}</label>
+        <input type="radio" name="duration" id="dur-date" value="date">
+        <label class="chip" for="dur-date">{{ t('add.until_date') }}</label>
+      </div>
+      <div class="row date-field">
+        <label for="until" class="label">{{ t('add.end_date') }}</label>
+        <input id="until" name="until" type="date" min="{{ min_date }}">
+      </div>
+    </fieldset>
+    {% for d in presets %}
+    <div class="hint" data-hint="days-{{ d }}"{% if d != default_preset %} hidden{% endif %}><span>{{ t('add.hint_days', until=preset_ends[d] | dt) }}</span></div>
+    {% endfor %}
+    <div class="hint" data-hint="forever" hidden><span>{{ t('add.hint_forever') }}</span></div>
+    <div class="hint" data-hint="date" hidden><span>{{ t('add.hint_date') }}</span></div>
+    <div class="row">
+      <button type="submit" class="chip chip-main block">{{ t('add.submit') }}</button>
+      {% if api_enabled %}<span class="micro">{{ t('add.api_note') }}</span>{% endif %}
+    </div>
+  </form>
+
+  <section class="stack">
+    <dl class="stats">
+      <div class="stat"><dt>{{ t('stats.active') }}</dt><dd>{{ stats.active }}</dd></div>
+      <div class="stat"><dt>{{ t('stats.due_soon') }}</dt><dd>{{ stats.due_soon }}</dd></div>
+      <div class="stat"><dt>{{ t('stats.forever') }}</dt><dd>{{ stats.forever }}</dd></div>
+      <div class="stat"><dt>{{ t('stats.expired') }}</dt><dd{% if stats.expired %} class="minus"{% endif %}>{{ stats.expired }}</dd></div>
+    </dl>
+
+    <div class="card list">
+      <div class="list-head">
+        <p class="eyebrow">{{ t.plural('list.eyebrow', entries | length) }}</p>
+        <span class="micro">{{ t('list.as_of', date=now | dt) }}</span>
+      </div>
+      {% if not entries %}
+      <p class="empty">{{ t('list.empty') }}</p>
+      {% endif %}
+      {% for row in entries %}
+      {% set e = row.entry %}
+      <div class="entry">
+        <div class="entry-row">
+          <div class="entry-id">
+            <span class="entry-net">{{ e.network }}</span>
+            <span class="entry-label">{{ e.label or ('—' if not e.created_by else '') }}</span>
+          </div>
+          <div class="entry-when">
+            {% if row.forever %}
+            <span class="entry-until forever">{{ t('list.forever') }}</span>
+            {% elif row.expired %}
+            <span class="entry-until expired">{{ t('list.expired', date=e.expires_at | dt) }}</span>
+            {% else %}
+            <span class="entry-until">{{ t('list.until', date=e.expires_at | dt, remaining=row.remaining_text) }}</span>
+            <div class="rail-track" aria-hidden="true"><span class="seg-work" id="rail-{{ e.id }}"></span></div>
+            {% endif %}
+          </div>
+          <div class="entry-actions">
+            <details class="extend" id="extend-{{ e.id }}">
+              <summary><span class="chip">{{ t('list.extend') }}</span></summary>
+            </details>
+            <form method="post" action="/entries/{{ e.id }}/delete" data-confirm="{{ t('list.remove_confirm', network=e.network) }}">
+              <input type="hidden" name="_csrf" value="{{ csrf }}">
+              <button type="submit" class="chip">{{ t('list.remove') }}</button>
+            </form>
+          </div>
+        </div>
+        <form method="post" action="/entries/{{ e.id }}/extend" class="extend-panel" data-duration-group data-for="extend-{{ e.id }}">
+          <input type="hidden" name="_csrf" value="{{ csrf }}">
+          <span class="eyebrow">{{ t('extend.eyebrow') }}</span>
+          <div class="row chips">
+            {% for p in row.extend_presets %}
+            <input type="radio" name="duration" id="ext-{{ e.id }}-{{ p.days }}" value="{{ p.days }}"{% if loop.first %} checked{% endif %}>
+            <label class="chip" for="ext-{{ e.id }}-{{ p.days }}">{{ t.plural('extend.days', p.days) }}</label>
+            {% endfor %}
+            <input type="radio" name="duration" id="ext-{{ e.id }}-forever" value="forever">
+            <label class="chip" for="ext-{{ e.id }}-forever">{{ t('extend.forever') }}</label>
+            <input type="radio" name="duration" id="ext-{{ e.id }}-date" value="date">
+            <label class="chip" for="ext-{{ e.id }}-date">{{ t('extend.until_date') }}</label>
+          </div>
+          <div class="row date-field">
+            <label for="ext-until-{{ e.id }}" class="label">{{ t('add.end_date') }}</label>
+            <input id="ext-until-{{ e.id }}" name="until" type="date" min="{{ min_date }}">
+          </div>
+          <div class="row">
+            <button type="submit" class="chip on">{{ t('extend.apply') }}</button>
+            {% for p in row.extend_presets %}
+            <span class="note" data-hint="days-{{ p.days }}"{% if not loop.first %} hidden{% endif %}>{{ t('extend.new_end', date=p.new_end | dt) }}</span>
+            {% endfor %}
+            <span class="note" data-hint="forever" hidden>{{ t('extend.new_end_forever') }}</span>
+            <span class="note" data-hint="date" hidden>{{ t('add.hint_date') }}</span>
+          </div>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+{% endblock %}
+
+{% block footer %}
+  {% if api_enabled %}{{ t('footer.text', url=list_url) }}{% else %}{{ t('footer.text_no_api', url=list_url) }}{% endif %}
+{% endblock %}
