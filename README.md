@@ -30,8 +30,11 @@ bw-scheduler ◀── GET /ips.txt ────┘   WHITELIST_IP_URLS=http://w
    (`POST /jobs/run`).
 4. A background loop watches for entries that reach their end, triggers the same
    refresh, and deletes expired entries after `EXPIRED_RETENTION_DAYS` (they stay
-   visible, marked red and extendable, until then). Without the API the hourly job
-   still picks the list up on its own.
+   visible, marked red and extendable, until then). A storage error in one tick is logged
+   and retried on the next; `GET /healthz` answers 503 if the loop ever stops. Without the
+   API the hourly job still picks the list up on its own, so an expiry can lag up to an hour.
+   `WHITELIST_URL` must be byte-identical to `WHITELIST_IP_URLS`: it names the cache file
+   that gets dropped, and a persistent miss is shown as an API error in the header.
 
 The whitelister never writes BunkerWeb settings. It needs an API user with
 `cache_read`, `cache_delete` and `job_execute` permissions only (no admin).
@@ -61,17 +64,25 @@ The page sits in front of a sensitive control, so it is built accordingly:
   headers are honoured only when the TCP peer is inside it; `X-Forwarded-For` is walked from
   the right, skipping trusted hops, and a chain that does not parse means no login. With
   `none` the TCP peer is the client, full stop. Uvicorn's own proxy-header handling is
-  disabled so there is exactly one place that decides.
+  disabled so there is exactly one place that decides. Name the ingress address alone (the
+  compose example pins BunkerWeb to `10.20.30.2`), never a shared subnet: every host inside
+  `TRUSTED_PROXIES` can choose the client identity it reports.
 - **The plain list is not public.** `/ips.txt` answers only direct requests (any
   forwarding header means "came through a proxy" and is refused) from
-  `LIST_ALLOWED_NETWORKS`, optionally also requiring `LIST_TOKEN` in the URL.
+  `LIST_ALLOWED_NETWORKS`, and requires `LIST_TOKEN` in the URL when one is set (the example
+  configuration sets one; the footer never shows it).
 - **Headers.** Strict CSP (`default-src 'none'`, scripts, styles and fonts from `self`
   only), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: same-origin`,
   `Cache-Control: no-store`, optional HSTS. No external requests from the browser.
 - **Input.** Addresses are parsed with `ipaddress`; loopback, multicast, unspecified and
   reserved ranges are refused, networks wider than `MIN_PREFIX_V4` / `MIN_PREFIX_V6`
-  too. Labels are limited to 64 characters with control characters stripped. Request
-  bodies over 16 KB and chunked uploads are rejected. Templates auto-escape.
+  too, as are IPv6 scope ids and inner whitespace (the stdlib accepts newlines inside a scope id,
+  which would otherwise smuggle extra lines into the list; the list writer also refuses anything
+  that is not one network token). Extending an entry re-applies the current policy, so a row
+  accepted under an earlier, looser `MIN_PREFIX_*`/`ALLOW_PRIVATE` cannot be revived or made
+  permanent once the policy is tightened; such rows are warned about at startup. Labels are
+  limited to 64 characters with control characters stripped. Request bodies over 16 KB and
+  chunked uploads are rejected. Templates auto-escape.
 - **Container.** Multi-stage build on `python:3.14-slim` with the latest Debian
   patches, no pip at runtime, non-root user `10001`, works with `read_only: true`,
   `cap_drop: ALL` and `no-new-privileges`. Dependencies are pinned with hashes
@@ -126,7 +137,7 @@ All variables may be given as `NAME_FILE` (path to a secret) instead.
 | `COOKIE_SECURE` | `yes` | `Secure` cookies with `__Host-` prefix (needs HTTPS) |
 | `HSTS` | `no` | Send `Strict-Transport-Security` |
 | `LIST_ALLOWED_NETWORKS` | RFC 1918, loopback, ULA | Who may fetch `/ips.txt` directly |
-| `LIST_TOKEN` | | Extra secret required as `?token=` on `/ips.txt` |
+| `LIST_TOKEN` | | Secret required as `?token=` on `/ips.txt` (recommended; empty = none) |
 | `DURATION_PRESETS` | `1 7 14 30` | Day chips shown in the forms |
 | `MAX_DAYS` | `3650` | Longest allowed duration |
 | `EXPIRED_RETENTION_DAYS` | `7` | How long expired entries stay listed before deletion |
@@ -172,7 +183,15 @@ Re-pin dependencies to the newest releases with `scripts/compile-requirements.sh
 | `POST /entries`, `/entries/{id}/extend`, `/entries/{id}/delete` | session + CSRF | Changes |
 | `POST /logout` | session + CSRF | |
 | `GET /ips.txt` | direct requests from `LIST_ALLOWED_NETWORKS` | The list for BunkerWeb |
-| `GET /healthz` | everyone | `{"status":"ok"}` |
+| `GET /healthz` | everyone | `{"status":"ok"}`, 503 when the background loop has stopped |
+
+## Security audit
+
+A full audit with the Cloudflare `security-audit` skill (profile standard: reconnaissance,
+three hunter waves, coverage critics, independent validation and record verification, all
+target execution in an OS sandbox) was run on v0.1.0 before the fixes in this version. The
+reports are under `docs/security-audit/run-1/`: two confirmed low findings (both fixed here,
+with regression tests) and three leads that need owner-observed BunkerWeb or deployment facts.
 
 ## License
 

@@ -1,0 +1,496 @@
+[
+  {
+    "coverage_id": ".github%2Fworkflows%2Fci.yml%23image::.github%2Fworkflows%2Fci.yml%23permissions::ci::SUPPLY-CHAIN-AND-RELEASE.md%23Untrusted%20code%20in%20a%20privileged%20workflow",
+    "surface": ".github/workflows/ci.yml#image",
+    "boundary": ".github/workflows/ci.yml#permissions",
+    "subsystem": "ci",
+    "attack_class": "SUPPLY-CHAIN-AND-RELEASE.md#Untrusted code in a privileged workflow",
+    "status": "covered",
+    "agent_id": "w1-h7-deploy-ci",
+    "reviewed_paths": [
+      ".github/dependabot.yml",
+      ".github/workflows/ci.yml"
+    ],
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": ".github%2Fworkflows%2Fci.yml%23image::Dockerfile%23pip%20install%20--require-hashes::ci::SUPPLY-CHAIN-AND-RELEASE.md%23Mutable%20and%20unbound%20build%20inputs",
+    "surface": ".github/workflows/ci.yml#image",
+    "boundary": "Dockerfile#pip install --require-hashes",
+    "subsystem": "ci",
+    "attack_class": "SUPPLY-CHAIN-AND-RELEASE.md#Mutable and unbound build inputs",
+    "status": "covered",
+    "agent_id": "w1-h7-deploy-ci",
+    "reviewed_paths": [
+      ".dockerignore",
+      ".github/workflows/ci.yml",
+      "Dockerfile",
+      "docker-compose.example.yml",
+      "requirements.in",
+      "requirements.txt",
+      "scripts/compile-requirements.sh"
+    ],
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "Dockerfile%23runtime%20stage::Dockerfile%23USER%2010001::deploy::CLOUD-AND-DEPLOYMENT.md%23Security-control%20precedence%20drift",
+    "surface": "Dockerfile#runtime stage",
+    "boundary": "Dockerfile#USER 10001",
+    "subsystem": "deploy",
+    "attack_class": "CLOUD-AND-DEPLOYMENT.md#Security-control precedence drift",
+    "status": "covered",
+    "agent_id": "w1-h7-deploy-ci",
+    "reviewed_paths": [
+      ".dockerignore",
+      ".env.example",
+      "Dockerfile",
+      "README.md",
+      "docker-compose.example.yml",
+      "whitelister/__main__.py",
+      "whitelister/config.py"
+    ],
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "Dockerfile%23runtime%20stage::docker-compose.example.yml%23whitelister::deploy::CLOUD-AND-DEPLOYMENT.md%23Trusted-proxy%20and%20mesh%20identity%20bypass",
+    "surface": "Dockerfile#runtime stage",
+    "boundary": "docker-compose.example.yml#whitelister",
+    "subsystem": "deploy",
+    "attack_class": "CLOUD-AND-DEPLOYMENT.md#Trusted-proxy and mesh identity bypass",
+    "status": "candidate",
+    "agent_id": "w1-h7-deploy-ci",
+    "reviewed_paths": [
+      ".env.example",
+      "Dockerfile",
+      "README.md",
+      "docker-compose.example.yml",
+      "whitelister/app.py",
+      "whitelister/config.py",
+      "whitelister/security.py"
+    ],
+    "result_fingerprints": [
+      "docker-compose.example.yml:whitelister:TRUSTED_PROXIES:shared-bw-services-subnet"
+    ]
+  },
+  {
+    "coverage_id": "whitelister%23package::whitelister%2Fapp.py%23create_app::whitelister::ATTACK-CLASSES.md%23Obvious%20things",
+    "surface": "whitelister#package",
+    "boundary": "whitelister/app.py#create_app",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Obvious things",
+    "status": "covered",
+    "agent_id": "w1-h8-wild",
+    "reviewed_paths": [
+      ".dockerignore",
+      ".env.example",
+      ".github/dependabot.yml",
+      ".github/workflows/ci.yml",
+      ".gitignore",
+      "Dockerfile",
+      "README.md",
+      "docker-compose.example.yml",
+      "pyproject.toml",
+      "requirements.in",
+      "requirements.txt",
+      "tests/conftest.py",
+      "whitelister/__main__.py",
+      "whitelister/app.py",
+      "whitelister/bunkerweb.py",
+      "whitelister/config.py",
+      "whitelister/entries.py",
+      "whitelister/i18n.py",
+      "whitelister/security.py",
+      "whitelister/static/app.js",
+      "whitelister/templates/base.html"
+    ],
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%23package::whitelister%2Fapp.py%23create_app::whitelister::ATTACK-CLASSES.md%23Wildcard",
+    "surface": "whitelister#package",
+    "boundary": "whitelister/app.py#create_app",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Wildcard",
+    "status": "covered",
+    "agent_id": "w1-h8-wild",
+    "reviewed_paths": [
+      "Dockerfile",
+      "docker-compose.example.yml",
+      "tests/conftest.py",
+      "tests/test_app.py",
+      "tests/test_entries.py",
+      "tests/test_security.py",
+      "whitelister/__main__.py",
+      "whitelister/app.py",
+      "whitelister/bunkerweb.py",
+      "whitelister/config.py",
+      "whitelister/entries.py",
+      "whitelister/hashpw.py",
+      "whitelister/i18n.py",
+      "whitelister/locales/de.json",
+      "whitelister/locales/en.json",
+      "whitelister/security.py",
+      "whitelister/templates/index.html",
+      "whitelister/templates/login.html"
+    ],
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23GET%20%2F::whitelister%2Fapp.py%23SecurityHeadersMiddleware::whitelister::ATTACK-CLASSES.md%23Injection",
+    "surface": "whitelister/app.py#GET /",
+    "boundary": "whitelister/app.py#SecurityHeadersMiddleware",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Injection",
+    "status": "covered",
+    "agent_id": "w1-h5-render-abuse",
+    "reviewed_paths": [
+      "whitelister/app.py",
+      "whitelister/entries.py",
+      "whitelister/i18n.py",
+      "whitelister/locales/de.json",
+      "whitelister/locales/en.json",
+      "whitelister/security.py",
+      "whitelister/static/app.js",
+      "whitelister/templates/base.html",
+      "whitelister/templates/index.html",
+      "whitelister/templates/login.html"
+    ],
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23GET%20%2F::whitelister%2Fapp.py%23require_post::whitelister::ATTACK-CLASSES.md%23Feature%20abuse%20and%20data%20leakage",
+    "surface": "whitelister/app.py#GET /",
+    "boundary": "whitelister/app.py#require_post",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+    "status": "covered",
+    "agent_id": "w1-h5-render-abuse",
+    "reviewed_paths": [
+      ".env.example",
+      "README.md",
+      "whitelister/app.py",
+      "whitelister/bunkerweb.py",
+      "whitelister/config.py",
+      "whitelister/templates/index.html",
+      "whitelister/templates/login.html"
+    ],
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23GET%20%2Fips.txt::whitelister%2Fsecurity.py%23has_forwarding_headers::whitelister::ATTACK-CLASSES.md%23Access%20control",
+    "surface": "whitelister/app.py#GET /ips.txt",
+    "boundary": "whitelister/security.py#has_forwarding_headers",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Access control",
+    "status": "covered",
+    "agent_id": "w1-h2-proxy-list",
+    "reviewed_paths": [
+      ".env.example",
+      ".github/workflows/ci.yml",
+      "README.md",
+      "docker-compose.example.yml",
+      "tests/test_app.py",
+      "tests/test_security.py",
+      "whitelister/__main__.py",
+      "whitelister/app.py",
+      "whitelister/config.py",
+      "whitelister/entries.py",
+      "whitelister/security.py"
+    ],
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Fentries%2F%7Bentry_id%7D%2Fextend::whitelister%2Fentries.py%23parse_network::whitelister::DATA-ISOLATION-AND-LIFECYCLE.md%23Restore%20reintroduces%20invalid%20state",
+    "surface": "whitelister/app.py#POST /entries/{entry_id}/extend",
+    "boundary": "whitelister/entries.py#parse_network",
+    "subsystem": "whitelister",
+    "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Restore reintroduces invalid state",
+    "status": "candidate",
+    "agent_id": "w3-h11-policy-drift",
+    "reviewed_paths": [
+      ".env.example",
+      "README.md",
+      "tests/conftest.py",
+      "tests/test_app.py",
+      "tests/test_entries.py",
+      "whitelister/__main__.py",
+      "whitelister/app.py",
+      "whitelister/bunkerweb.py",
+      "whitelister/config.py",
+      "whitelister/entries.py"
+    ],
+    "result_fingerprints": [
+      "whitelister/app.py:extend_entry:stored-network-not-revalidated"
+    ]
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Fentries::whitelister%2Fapp.py%23require_post::whitelister::WEB-PROTOCOL-AND-AUTH.md%23Ordinary%20CSRF",
+    "surface": "whitelister/app.py#POST /entries",
+    "boundary": "whitelister/app.py#require_post",
+    "subsystem": "whitelister",
+    "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Ordinary CSRF",
+    "status": "covered",
+    "agent_id": "w1-h1-auth",
+    "reviewed_paths": [
+      ".env.example",
+      "docker-compose.example.yml",
+      "tests/test_app.py",
+      "whitelister/app.py",
+      "whitelister/config.py",
+      "whitelister/security.py",
+      "whitelister/static/app.js",
+      "whitelister/templates/index.html",
+      "whitelister/templates/login.html"
+    ],
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Fentries::whitelister%2Fentries.py%23EntryStore::whitelister::ATTACK-CLASSES.md%23Business%20logic",
+    "surface": "whitelister/app.py#POST /entries",
+    "boundary": "whitelister/entries.py#EntryStore",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Business logic",
+    "status": "covered",
+    "agent_id": "w1-h4-entries",
+    "reviewed_paths": [
+      "whitelister/app.py",
+      "whitelister/bunkerweb.py",
+      "whitelister/config.py",
+      "whitelister/entries.py"
+    ],
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Fentries::whitelister%2Fentries.py%23parse_network::whitelister::ATTACK-CLASSES.md%23Injection",
+    "surface": "whitelister/app.py#POST /entries",
+    "boundary": "whitelister/entries.py#parse_network",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Injection",
+    "status": "candidate",
+    "agent_id": "w1-h4-entries",
+    "reviewed_paths": [
+      "whitelister/app.py",
+      "whitelister/entries.py",
+      "whitelister/i18n.py",
+      "whitelister/templates/index.html"
+    ],
+    "result_fingerprints": [
+      "whitelister/entries.py:network_text:ipv6-scope-id-newline-into-ips-list"
+    ]
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Fentries::whitelister%2Fentries.py%23render_list::whitelister::ATTACK-CLASSES.md%23Chained%20vulnerabilities%20and%20trust%20boundaries",
+    "surface": "whitelister/app.py#POST /entries",
+    "boundary": "whitelister/entries.py#render_list",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+    "status": "candidate",
+    "agent_id": "w1-h4-entries",
+    "reviewed_paths": [
+      "README.md",
+      "whitelister/app.py",
+      "whitelister/bunkerweb.py",
+      "whitelister/entries.py",
+      "whitelister/security.py"
+    ],
+    "result_fingerprints": [
+      "whitelister/entries.py:network_text:ipv6-scope-id-newline-into-ips-list"
+    ]
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Flogin::whitelister%2Fsecurity.py%23LoginThrottle::whitelister::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Pre-authentication%20work%20imbalance",
+    "surface": "whitelister/app.py#POST /login",
+    "boundary": "whitelister/security.py#LoginThrottle",
+    "subsystem": "whitelister",
+    "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Pre-authentication work imbalance",
+    "status": "covered",
+    "agent_id": "w1-h3-avail",
+    "reviewed_paths": [
+      "whitelister/__main__.py",
+      "whitelister/app.py",
+      "whitelister/security.py"
+    ],
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Flogin::whitelister%2Fsecurity.py%23PasswordChecker::whitelister::ATTACK-CLASSES.md%23Access%20control",
+    "surface": "whitelister/app.py#POST /login",
+    "boundary": "whitelister/security.py#PasswordChecker",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Access control",
+    "status": "covered",
+    "agent_id": "w1-h1-auth",
+    "reviewed_paths": [
+      "whitelister/__main__.py",
+      "whitelister/app.py",
+      "whitelister/config.py",
+      "whitelister/entries.py",
+      "whitelister/hashpw.py",
+      "whitelister/security.py",
+      "whitelister/templates/login.html"
+    ],
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Flogin::whitelister%2Fsecurity.py%23throttle_key::whitelister::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Quota-accounting%20scope%20and%20reset%20gaps",
+    "surface": "whitelister/app.py#POST /login",
+    "boundary": "whitelister/security.py#throttle_key",
+    "subsystem": "whitelister",
+    "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Quota-accounting scope and reset gaps",
+    "status": "covered",
+    "agent_id": "w1-h3-avail",
+    "reviewed_paths": [
+      "whitelister/app.py",
+      "whitelister/security.py"
+    ],
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23SecurityHeadersMiddleware::whitelister%2F__main__.py%23main::whitelister::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Unbounded%20buffering%20and%20cardinality",
+    "surface": "whitelister/app.py#SecurityHeadersMiddleware",
+    "boundary": "whitelister/__main__.py#main",
+    "subsystem": "whitelister",
+    "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Unbounded buffering and cardinality",
+    "status": "covered",
+    "agent_id": "w1-h3-avail",
+    "reviewed_paths": [
+      "whitelister/__main__.py",
+      "whitelister/app.py",
+      "whitelister/bunkerweb.py",
+      "whitelister/entries.py"
+    ],
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23client_ip::whitelister%2Fsecurity.py%23resolve_client_ip::whitelister::WEB-PROTOCOL-AND-AUTH.md%23Host%20and%20forwarded-header%20trust",
+    "surface": "whitelister/app.py#client_ip",
+    "boundary": "whitelister/security.py#resolve_client_ip",
+    "subsystem": "whitelister",
+    "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Host and forwarded-header trust",
+    "status": "covered",
+    "agent_id": "w1-h2-proxy-list",
+    "reviewed_paths": [
+      ".env.example",
+      "README.md",
+      "tests/test_app.py",
+      "tests/test_security.py",
+      "whitelister/__main__.py",
+      "whitelister/app.py",
+      "whitelister/config.py",
+      "whitelister/security.py",
+      "whitelister/templates/index.html",
+      "whitelister/templates/login.html"
+    ],
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23session%20cookie::whitelister%2Fsecurity.py%23SessionCodec::whitelister::WEB-PROTOCOL-AND-AUTH.md%23Session%20fixation%20and%20invalidation",
+    "surface": "whitelister/app.py#session cookie",
+    "boundary": "whitelister/security.py#SessionCodec",
+    "subsystem": "whitelister",
+    "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Session fixation and invalidation",
+    "status": "covered",
+    "agent_id": "w1-h1-auth",
+    "reviewed_paths": [
+      "README.md",
+      "whitelister/app.py",
+      "whitelister/config.py",
+      "whitelister/entries.py",
+      "whitelister/security.py"
+    ],
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fbunkerweb.py%23BunkerWebClient::whitelister%2Fconfig.py%23load_settings::whitelister::ATTACK-CLASSES.md%23Resource%20and%20file%20handling",
+    "surface": "whitelister/bunkerweb.py#BunkerWebClient",
+    "boundary": "whitelister/config.py#load_settings",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Resource and file handling",
+    "status": "covered",
+    "agent_id": "w1-h6-api-config",
+    "reviewed_paths": [
+      ".env.example",
+      "Dockerfile",
+      "docker-compose.example.yml",
+      "tests/conftest.py",
+      "whitelister/app.py",
+      "whitelister/bunkerweb.py",
+      "whitelister/config.py",
+      "whitelister/entries.py",
+      "whitelister/security.py"
+    ],
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fbunkerweb.py%23Syncer._run::whitelister%2Fbunkerweb.py%23cache_file_name::whitelister::DATA-ISOLATION-AND-LIFECYCLE.md%23Stale%20authorization%20and%20derived%20copy%20use",
+    "surface": "whitelister/bunkerweb.py#Syncer._run",
+    "boundary": "whitelister/bunkerweb.py#cache_file_name",
+    "subsystem": "whitelister",
+    "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Stale authorization and derived copy use",
+    "status": "candidate",
+    "agent_id": "w2-h10-revocation",
+    "reviewed_paths": [
+      ".env.example",
+      "Dockerfile",
+      "README.md",
+      "docker-compose.example.yml",
+      "tests/conftest.py",
+      "tests/test_app.py",
+      "whitelister/app.py",
+      "whitelister/bunkerweb.py",
+      "whitelister/config.py",
+      "whitelister/entries.py",
+      "whitelister/templates/index.html"
+    ],
+    "result_fingerprints": [
+      "whitelister/bunkerweb.py:BunkerWebClient._trigger:persistent-404-jobs-run-reported-as-ok+compose-WHITELIST_URL-override",
+      "whitelister/bunkerweb.py:Syncer._run:unguarded-store-call-silently-ends-expiry-propagation"
+    ]
+  },
+  {
+    "coverage_id": "whitelister%2Fconfig.py%23_read::whitelister%2Fconfig.py%23load_settings::whitelister::CLOUD-AND-DEPLOYMENT.md%23Security-control%20precedence%20drift",
+    "surface": "whitelister/config.py#_read",
+    "boundary": "whitelister/config.py#load_settings",
+    "subsystem": "whitelister",
+    "attack_class": "CLOUD-AND-DEPLOYMENT.md#Security-control precedence drift",
+    "status": "covered",
+    "agent_id": "w2-h9-config-precedence",
+    "reviewed_paths": [
+      ".env.example",
+      "README.md",
+      "docker-compose.example.yml",
+      "tests/conftest.py",
+      "tests/test_app.py",
+      "whitelister/__main__.py",
+      "whitelister/app.py",
+      "whitelister/bunkerweb.py",
+      "whitelister/config.py",
+      "whitelister/security.py"
+    ],
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fconfig.py%23load_settings::whitelister%2Fconfig.py%23_load_or_create_secret::whitelister::ATTACK-CLASSES.md%23Cryptography%20and%20secrets",
+    "surface": "whitelister/config.py#load_settings",
+    "boundary": "whitelister/config.py#_load_or_create_secret",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Cryptography and secrets",
+    "status": "covered",
+    "agent_id": "w1-h6-api-config",
+    "reviewed_paths": [
+      ".env.example",
+      "README.md",
+      "tests/test_app.py",
+      "tests/test_security.py",
+      "whitelister/__main__.py",
+      "whitelister/app.py",
+      "whitelister/bunkerweb.py",
+      "whitelister/config.py",
+      "whitelister/hashpw.py",
+      "whitelister/locales/en.json",
+      "whitelister/security.py",
+      "whitelister/templates/index.html"
+    ],
+    "result_fingerprints": []
+  }
+]

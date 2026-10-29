@@ -110,3 +110,15 @@ def test_store_roundtrip_and_expiry(tmp_path):
 
 def test_render_list():
     assert render_list(["1.2.3.4", "10.0.0.0/24"]) == "# bunkerweb-whitelister\n1.2.3.4\n10.0.0.0/24\n"
+
+
+@pytest.mark.parametrize("raw", ["2a00::1%x\n127.0.0.1", "fe80::1%eth0", "2a00::1%x\r\n# comment", "2001:db8:: /64", "1.2.3.4\t5"])
+def test_scope_ids_and_inner_whitespace_are_refused(settings, raw):
+    with pytest.raises(ValidationError) as exc:
+        parse_network(raw, settings)
+    assert exc.value.key == "error.ip_invalid"
+
+
+def test_render_list_emits_only_single_network_tokens():
+    out = render_list(["1.2.3.4", "2a00::1%x\n127.0.0.1", "fe80::1%eth0", "not an ip", "10.0.0.0/24"])
+    assert out == "# bunkerweb-whitelister\n1.2.3.4\n10.0.0.0/24\n"
