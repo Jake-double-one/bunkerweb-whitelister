@@ -35,6 +35,7 @@ from .entries import (
     network_text,
     normalize_label,
     parse_network,
+    policy_violations,
     render_list,
 )
 from .i18n import Translator
@@ -116,6 +117,12 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         if not settings.cookie_secure:
             log.warning("COOKIE_SECURE=no: only use this on plain-HTTP test setups")
         log.info("bunkerweb-whitelister %s listening, language=%s, api=%s", __version__, t.language, "on" if client.enabled else "off")
+        for bad in policy_violations(store.list(), settings):
+            log.warning(
+                "stored entry %s (%s) no longer passes the current entry policy; it stays listed until it expires or is removed",
+                bad.network,
+                bad.label,
+            )
         syncer.request_refresh()
         await syncer.start()
         try:
@@ -289,6 +296,8 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
 
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> JSONResponse:
+        if not syncer.alive():
+            return JSONResponse({"status": "error", "detail": "background sync loop stopped"}, status_code=503)
         return JSONResponse({"status": "ok"})
 
     @app.get("/ips.txt", include_in_schema=False)
@@ -380,7 +389,7 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
             },
             "api_state": state,
             "api_state_text": state_text,
-            "list_url": settings.whitelist_url or "/ips.txt",
+            "list_url": _public_url(settings.whitelist_url) if settings.whitelist_url else "/ips.txt",
             "api_enabled": client.enabled,
             "min_date": now.astimezone(tz).strftime("%Y-%m-%d"),
             "flash": None,
@@ -442,6 +451,7 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
             return redirect_with_flash("/", "alert", t("error.not_found"))
         now = datetime.now(UTC)
         try:
+            parse_network(entry.network, settings)  # the stored row must still satisfy the current policy
             if duration == "forever":
                 new_end = None
             elif duration == "date":
@@ -497,6 +507,14 @@ def _joined_headers(request: Request) -> dict[str, str]:
     for key, value in request.headers.items():
         out[key] = f"{out[key]}, {value}" if key in out else value
     return out
+
+
+def _public_url(url: str) -> str:
+    """The list URL without its query string: the footer must not show LIST_TOKEN."""
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    return parts._replace(query="", fragment="").geturl()
 
 
 def _timezone() -> ZoneInfo:
