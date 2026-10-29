@@ -59,32 +59,21 @@ jobs:
           docker exec wl sh -c 'id -u' | grep -q '^10001$'
           docker logs wl
           docker rm -f wl
-      - name: Diagnostic scan (temporary)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: bunkerweb-whitelister:ci
-          format: json
-          output: trivy-diag.json
-          ignore-unfixed: true
-          exit-code: "0"
-      - name: Report diagnostic findings as annotations (temporary)
-        run: |
-          jq -r '
-            [.Results[]? | . as $r
-              | ((.Vulnerabilities // [])[] | "VULN \($r.Target) \($r.Type) \(.PkgName) \(.InstalledVersion) -> \(.FixedVersion) \(.Severity) \(.VulnerabilityID)"),
-                ((.Secrets // [])[] | "SECRET \($r.Target) \(.RuleID) \(.Severity) \(.Title)"),
-                ((.Misconfigurations // [])[] | "MISCONF \($r.Target) \(.ID) \(.Severity)")
-            ] | .[]' trivy-diag.json > findings.txt || true
-          echo "findings: $(wc -l < findings.txt)"
-          echo "::notice title=trivy-findings-count::$(wc -l < findings.txt) findings; targets: $(jq -c '[.Results[]? | {Target, Class, Type, v: ((.Vulnerabilities // []) | length), s: ((.Secrets // []) | length)}]' trivy-diag.json | head -c 3000)"
-          head -c 3500 findings.txt | while IFS= read -r line; do echo "::notice title=trivy::$line"; done
-          echo "::notice title=trivy-meta::$(jq -c '{SchemaVersion, ArtifactName, Metadata: {OS: .Metadata.OS}}' trivy-diag.json | head -c 1000)"
-      - name: Scan image
+      # Full report for the Security tab (every severity, never fails the build) ...
+      - name: Scan image (report)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: bunkerweb-whitelister:ci
           format: sarif
           output: trivy.sarif
+          ignore-unfixed: true
+          exit-code: "0"
+      # ... and the gate: any fixable HIGH/CRITICAL vulnerability or secret fails the build.
+      - name: Scan image (gate)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: bunkerweb-whitelister:ci
+          format: table
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
