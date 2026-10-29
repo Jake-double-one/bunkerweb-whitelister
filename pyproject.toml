@@ -1,6 +1,6 @@
 [project]
 name = "bunkerweb-whitelister"
-version = "0.1.1"
+version = "0.1.2"
 description = "Password-protected front end for BunkerWeb's global IP whitelist, with expiring entries."
 readme = "README.md"
 requires-python = ">=3.13"

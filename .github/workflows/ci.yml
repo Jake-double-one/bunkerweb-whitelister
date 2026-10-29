@@ -26,6 +26,12 @@ jobs:
           pip install pytest ruff pip-audit
       - name: Lint
         run: ruff check . && ruff format --check .
+      - name: Tag matches the package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          code="$(python -c 'import whitelister; print(whitelister.__version__)')"
+          test "$tag" = "$code" || { echo "tag v$tag but whitelister.__version__ is $code"; exit 1; }
       - name: Test
         run: pytest -q
       - name: Audit dependencies
