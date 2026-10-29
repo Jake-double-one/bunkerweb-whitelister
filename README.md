@@ -37,7 +37,7 @@ bw-scheduler ◀── GET /ips.txt ────┘   WHITELIST_IP_URLS=http://w
    that gets dropped, and a persistent miss is shown as an API error in the header.
 
 The whitelister never writes BunkerWeb settings. It needs an API user with
-`cache_read`, `cache_delete` and `job_execute` permissions only (no admin).
+`cache_read`, `cache_delete` and `job_run` permissions only (no admin).
 
 ## Security model
 
@@ -110,7 +110,24 @@ WHITELIST_IP_URLS=http://whitelister:8080/ips.txt
 ```
 
 API side: an API user for the whitelister (`API_ACL_BOOTSTRAP_FILE`) or the admin
-credentials, and `API_WHITELIST_IPS` covering the whitelister's network.
+credentials, and `API_WHITELIST_IPS` covering the whitelister's network. The whitelister
+exchanges `BW_API_USERNAME` / `BW_API_PASSWORD` for a Biscuit token at `POST /auth` and
+renews it when the API answers 401, so a non-admin ACL user is enough:
+
+```json
+{
+  "users": {
+    "whitelister": {
+      "admin": false,
+      "password": "<BW_API_PASSWORD>",
+      "permissions": {
+        "cache": { "*": { "cache_read": true, "cache_delete": true } },
+        "jobs": { "*": { "job_run": true } }
+      }
+    }
+  }
+}
+```
 
 `docker-compose.example.yml` shows the whole arrangement including the hardening
 options and the BunkerWeb labels that publish the page.
@@ -144,7 +161,7 @@ All variables may be given as `NAME_FILE` (path to a secret) instead.
 | `MIN_PREFIX_V4` / `MIN_PREFIX_V6` | `16` / `48` | Widest allowed network |
 | `ALLOW_PRIVATE` | `yes` | Allow RFC 1918 / ULA entries |
 | `BW_API_URL` | | e.g. `http://bw-api:8888`; unset = no API, list only |
-| `BW_API_USERNAME` / `BW_API_PASSWORD` | | Basic auth for the API, or: |
+| `BW_API_USERNAME` / `BW_API_PASSWORD` | | API user; exchanged at `POST /auth` for a Biscuit token that is renewed on 401. Works for non-admin ACL users. Or: |
 | `BW_API_TOKEN` | | Bearer token (`API_TOKEN`, break-glass only) |
 | `BW_API_VERIFY_TLS` | `yes` | Verify the API's certificate |
 | `WHITELIST_URL` | | Exactly the URL in `WHITELIST_IP_URLS` (names the cache file) |

@@ -569,3 +569,88 @@ def test_empty_list_token_file_means_no_token(env, tmp_path):
     empty.write_text("\n")
     env(LIST_TOKEN_FILE=str(empty))
     assert load_settings().list_token is None
+
+
+# --- BunkerWeb API authentication (issue: non-admin ACL users got HTTP 401) -------------------
+
+
+def test_acl_user_exchanges_credentials_for_a_biscuit_token_once(make_client, fake_bw):
+    """Non-admin users cannot use Basic on protected routes: the client must obtain a token."""
+    fake_bw.require_token = True
+    app, _store, settings = make_client()
+    client = app.state.client
+
+    async def run():
+        await client.trigger_refresh()
+        await client.trigger_refresh()
+
+    asyncio.run(run())
+    assert client.status.ok
+    cache_path = "/cache/global/whitelist/whitelist-download/" + cache_file_name(settings.whitelist_url)
+    assert [p for _, p in fake_bw.calls] == ["/auth", cache_path, cache_path]
+    assert fake_bw.auth_headers[1:] == ["Bearer biscuit-1", "Bearer biscuit-1"]
+
+
+def test_expired_token_is_renewed_once_and_the_call_retried(make_client, fake_bw):
+    fake_bw.require_token = True
+    app, _store, settings = make_client()
+    client = app.state.client
+    asyncio.run(client.trigger_refresh())
+    fake_bw.expire_tokens()
+    asyncio.run(client.trigger_refresh())
+    assert client.status.ok
+    assert fake_bw.issued == ["biscuit-1", "biscuit-2"]
+    # the refused call, the re-auth, then the retry with the new token
+    assert [p for _, p in fake_bw.calls][-3:] == [
+        "/cache/global/whitelist/whitelist-download/" + cache_file_name(settings.whitelist_url),
+        "/auth",
+        "/cache/global/whitelist/whitelist-download/" + cache_file_name(settings.whitelist_url),
+    ]
+    assert fake_bw.auth_headers[-1] == "Bearer biscuit-2"
+
+
+def test_wrong_api_credentials_are_reported_without_retry_storm(make_client, fake_bw):
+    fake_bw.require_token = True
+    app, _store, _settings = make_client(BW_API_PASSWORD="not-the-password")
+    client = app.state.client
+    with pytest.raises(RuntimeError, match="authentication rejected"):
+        asyncio.run(client.trigger_refresh())
+    assert client.status.last_error.startswith("authentication rejected")
+    assert [p for _, p in fake_bw.calls] == ["/auth"]
+
+
+def test_token_refused_twice_is_an_error_not_a_loop(make_client, fake_bw):
+    fake_bw.require_token = True
+    app, _store, _settings = make_client()
+    client = app.state.client
+    fake_bw.valid_tokens = set()  # the API never accepts what it issues (e.g. CHECK_PRIVATE_IP mismatch)
+    original = fake_bw.handler
+
+    def handler(request):
+        resp = original(request)
+        fake_bw.valid_tokens.clear()
+        return resp
+
+    client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://bw-api:8888")
+    with pytest.raises(RuntimeError, match="HTTP 401"):
+        asyncio.run(client.trigger_refresh())
+    assert [p for _, p in fake_bw.calls].count("/auth") == 2
+
+
+def test_static_admin_token_skips_the_auth_endpoint(make_client, fake_bw):
+    fake_bw.require_token = True
+    fake_bw.valid_tokens.add("break-glass")
+    app, _store, _settings = make_client(BW_API_TOKEN="break-glass", BW_API_USERNAME=None, BW_API_PASSWORD=None)
+    client = app.state.client
+    asyncio.run(client.trigger_refresh())
+    assert client.status.ok
+    assert "/auth" not in [p for _, p in fake_bw.calls]
+    assert fake_bw.auth_headers == ["Bearer break-glass"]
+
+
+def test_forbidden_names_the_missing_permissions(make_client, fake_bw):
+    app, _store, _settings = make_client(BW_API_TOKEN="read-only-token", BW_API_USERNAME=None, BW_API_PASSWORD=None)
+    client = app.state.client
+    client._client = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(403)), base_url="http://bw-api:8888")
+    with pytest.raises(RuntimeError, match="cache_read, cache_delete or job_run"):
+        asyncio.run(client.trigger_refresh())

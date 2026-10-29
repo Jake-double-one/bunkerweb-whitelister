@@ -41,24 +41,60 @@ def cache_file_name(url: str) -> str:
 
 
 class BunkerWebClient:
+    """Talks to bw-api with the least-privilege auth flow.
+
+    A static ``BW_API_TOKEN`` (the admin override) is sent as-is. With ``BW_API_USERNAME`` /
+    ``BW_API_PASSWORD`` the credentials are exchanged once at ``POST /auth`` for a Biscuit token,
+    which is then used as ``Bearer`` on every call; that is the only way a non-admin ACL user can
+    reach protected routes. A 401 (expired or revoked token) triggers one re-authentication and
+    one retry, so a token that outlives ``API_BISCUIT_TTL_SECONDS`` is refreshed on demand without
+    hammering the rate-limited ``/auth`` endpoint.
+    """
+
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.status = SyncStatus()
-        headers = {"User-Agent": "bunkerweb-whitelister", "Accept": "application/json"}
-        auth: httpx.Auth | None = None
-        if settings.bw_api_token:
-            headers["Authorization"] = f"Bearer {settings.bw_api_token}"
-        elif settings.bw_api_username and settings.bw_api_password:
-            auth = httpx.BasicAuth(settings.bw_api_username, settings.bw_api_password)
+        self._static_token = settings.bw_api_token or None
+        self._credentials: tuple[str, str] | None = None
+        if not self._static_token and settings.bw_api_username and settings.bw_api_password:
+            self._credentials = (settings.bw_api_username, settings.bw_api_password)
+        self._token: str | None = self._static_token
         self._client = httpx.AsyncClient(
             base_url=settings.bw_api_url or "http://invalid",
-            headers=headers,
-            auth=auth,
+            headers={"User-Agent": "bunkerweb-whitelister", "Accept": "application/json"},
             timeout=settings.sync_timeout_seconds,
             verify=settings.bw_api_verify_tls,
             follow_redirects=False,
         )
         self._lock = asyncio.Lock()
+
+    async def _authenticate(self) -> None:
+        """Exchange the configured credentials for a Biscuit token."""
+        if self._credentials is None:
+            raise RuntimeError("no credentials for the BunkerWeb API")
+        resp = await self._client.post("/auth", auth=httpx.BasicAuth(*self._credentials))
+        if resp.status_code != 200:
+            raise RuntimeError(f"authentication rejected (HTTP {resp.status_code} from /auth)")
+        try:
+            token = resp.json().get("token")
+        except ValueError:
+            token = None
+        if not isinstance(token, str) or not token:
+            raise RuntimeError("no token in the /auth response")
+        self._token = token
+
+    async def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        """Send an authenticated request, re-authenticating once when the token is refused."""
+        if self._token is None and self._credentials is not None:
+            await self._authenticate()
+        for attempt in (1, 2):
+            headers = {"Authorization": f"Bearer {self._token}"} if self._token else {}
+            resp = await self._client.request(method, path, headers=headers, **kwargs)
+            if resp.status_code != 401 or self._credentials is None or attempt == 2:
+                return resp
+            self._token = None  # expired or revoked: fetch a fresh one and retry once
+            await self._authenticate()
+        return resp  # pragma: no cover - the loop always returns
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -71,9 +107,9 @@ class BunkerWebClient:
         if not self.enabled:
             return False
         try:
-            resp = await self._client.get("/ping")
+            resp = await self._request("GET", "/ping")
             return resp.status_code == 200
-        except httpx.HTTPError:
+        except (httpx.HTTPError, RuntimeError):
             return False
 
     async def trigger_refresh(self) -> None:
@@ -95,7 +131,7 @@ class BunkerWebClient:
 
     async def _trigger(self) -> None:
         name = cache_file_name(self.settings.whitelist_url or "")
-        resp = await self._client.delete(f"/cache/global/whitelist/whitelist-download/{name}")
+        resp = await self._request("DELETE", f"/cache/global/whitelist/whitelist-download/{name}")
         if resp.status_code in (200, 207):
             self.status.misses = 0
             return
@@ -105,9 +141,13 @@ class BunkerWebClient:
             self.status.misses += 1
             if self.status.misses > 1:
                 raise RuntimeError("cache file not found: WHITELIST_URL does not match WHITELIST_IP_URLS")
-            resp = await self._client.post("/jobs/run", json={"jobs": [{"plugin": "whitelist", "name": "whitelist-download"}]})
+            resp = await self._request("POST", "/jobs/run", json={"jobs": [{"plugin": "whitelist", "name": "whitelist-download"}]})
             if resp.status_code in (200, 202):
                 return
+        if resp.status_code == 401:
+            raise RuntimeError("HTTP 401 from BunkerWeb API: token refused even after re-authentication")
+        if resp.status_code == 403:
+            raise RuntimeError("HTTP 403 from BunkerWeb API: the user lacks cache_read, cache_delete or job_run")
         raise RuntimeError(f"HTTP {resp.status_code} from BunkerWeb API")
 
 

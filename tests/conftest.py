@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -17,17 +18,42 @@ PASSWORD = "correct horse battery staple"
 
 
 class FakeBunkerWeb:
-    """Records calls to the BunkerWeb API and answers like the real one."""
+    """Records calls to the BunkerWeb API and answers like the real one.
+
+    With ``require_token`` it behaves like bw-api for a non-admin ACL user: protected routes need a
+    Biscuit token obtained at ``POST /auth`` with Basic credentials; Basic on the routes is a 401.
+    """
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
         self.cache_exists = True
         self.fail = False
+        self.require_token = False
+        self.credentials = ("admin", "secret")
+        self.issued: list[str] = []
+        self.valid_tokens: set[str] = set()
+        self.auth_headers: list[str | None] = []
+
+    def expire_tokens(self) -> None:
+        self.valid_tokens.clear()
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         self.calls.append((request.method, request.url.path))
+        self.auth_headers.append(request.headers.get("Authorization"))
         if self.fail:
             raise httpx.ConnectError("boom", request=request)
+        if request.method == "POST" and request.url.path == "/auth":
+            expected = "Basic " + base64.b64encode(":".join(self.credentials).encode()).decode()
+            if request.headers.get("Authorization") != expected:
+                return httpx.Response(401, json={"detail": "Invalid credentials"})
+            token = f"biscuit-{len(self.issued) + 1}"
+            self.issued.append(token)
+            self.valid_tokens.add(token)
+            return httpx.Response(200, json={"token": token, "token_type": "bearer"})
+        if self.require_token:
+            auth = request.headers.get("Authorization", "")
+            if not auth.startswith("Bearer ") or auth.removeprefix("Bearer ") not in self.valid_tokens:
+                return httpx.Response(401, json={"detail": "Not authenticated"})
         if request.url.path == "/ping":
             return httpx.Response(200, json={"status": "ok"})
         if request.method == "DELETE" and request.url.path.startswith("/cache/global/whitelist/whitelist-download/"):
