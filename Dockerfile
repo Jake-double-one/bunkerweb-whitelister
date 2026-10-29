@@ -6,8 +6,10 @@ FROM ${PYTHON_IMAGE} AS build
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /build
 COPY requirements.txt .
-RUN python -m venv /opt/venv \
- && /opt/venv/bin/pip install --no-cache-dir --require-hashes -r requirements.txt \
+# The runtime venv carries no pip of its own: the build stage's pip installs into it, so the
+# final image ships only the pinned application dependencies.
+RUN python -m venv --without-pip /opt/venv \
+ && pip --python /opt/venv/bin/python install --no-cache-dir --require-hashes -r requirements.txt \
  && find /opt/venv -name '__pycache__' -type d -prune -exec rm -rf {} +
 
 FROM ${PYTHON_IMAGE}

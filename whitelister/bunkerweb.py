@@ -29,6 +29,7 @@ class SyncStatus:
     last_success: float | None = None
     last_error: str | None = None
     pending: bool = False
+    misses: int = 0  # consecutive cache-file 404s; more than one means the name does not match BunkerWeb's
 
     @property
     def ok(self) -> bool:
@@ -96,9 +97,14 @@ class BunkerWebClient:
         name = cache_file_name(self.settings.whitelist_url or "")
         resp = await self._client.delete(f"/cache/global/whitelist/whitelist-download/{name}")
         if resp.status_code in (200, 207):
+            self.status.misses = 0
             return
         if resp.status_code == 404:
-            # no cached copy yet: schedule the job directly
+            # No cached copy under that name. Once is normal (first run); again after a job already ran
+            # means WHITELIST_URL is not the URL BunkerWeb fetches, so the refresh never reaches it.
+            self.status.misses += 1
+            if self.status.misses > 1:
+                raise RuntimeError("cache file not found: WHITELIST_URL does not match WHITELIST_IP_URLS")
             resp = await self._client.post("/jobs/run", json={"jobs": [{"plugin": "whitelist", "name": "whitelist-download"}]})
             if resp.status_code in (200, 202):
                 return
@@ -131,6 +137,9 @@ class Syncer:
         self.client.status.pending = True
         self._event.set()
 
+    def alive(self) -> bool:
+        return self._task is not None and not self._task.done()
+
     async def start(self) -> None:
         self._task = asyncio.create_task(self._run(), name="whitelister-sync")
 
@@ -157,12 +166,18 @@ class Syncer:
                 return
             self._event.clear()
             now = datetime.now(UTC)
-            for entry in self.store.expired_between(last_tick, now):
-                log.info("entry expired: %s (%s)", entry.network, entry.label)
+            try:
+                for entry in self.store.expired_between(last_tick, now):
+                    log.info("entry expired: %s (%s)", entry.network, entry.label)
+                    self.client.status.pending = True
+                last_tick = now
+                for entry in self.store.purge_expired(now - timedelta(days=self.settings.expired_retention_days)):
+                    log.info("expired entry removed: %s (%s)", entry.network, entry.label)
+            except Exception:
+                # a storage fault must not end the loop: the next tick retries the same window
+                log.exception("background tick failed; retrying on the next tick")
                 self.client.status.pending = True
-            last_tick = now
-            for entry in self.store.purge_expired(now - timedelta(days=self.settings.expired_retention_days)):
-                log.info("expired entry removed: %s (%s)", entry.network, entry.label)
+                continue
             if self.client.status.pending or self.client.status.last_error:
                 if self.settings.sync_debounce_seconds:
                     await asyncio.sleep(self.settings.sync_debounce_seconds)
