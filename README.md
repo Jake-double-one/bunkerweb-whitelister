@@ -180,6 +180,31 @@ All variables may be given as `NAME_FILE` (path to a secret) instead.
 Add `fr.json` with the keys you want to translate and set `WHITELISTER_LANG=fr`;
 missing keys fall back to English. Plurals use `key.one` / `key.other`.
 
+## Everyday shortcuts
+
+- **Extend my address.** When the visitor's own address is on the list, the header offers a
+  one-click "+7 days" (the first matching preset) without scrolling to the entry.
+- **Pre-filled links.** `https://whitelist.example/?add=me&days=7&label=Laptop` opens the form
+  with the visitor's address, the 7-day preset and the label already set; nothing is saved
+  until the button is pressed, so the CSRF protection stays intact. Behind a login proxy
+  such as Authentik the query string survives the round trip, and the whitelister's own login
+  returns to the same link. `add` may also be a concrete network.
+- **Label suggestion.** The label field proposes the last label used in this browser, or
+  "Browser · System" (a page cannot read the computer name).
+- **Search, filter, sort.** From three entries on, the list gets a search box, filters for
+  due-soon / forever / expired and sorting by expiry, label, network or age. Pure view logic
+  in the browser; without JavaScript the full list is shown.
+- **Recently.** The last five actions (added, extended, removed, expired, imported) under the
+  list. The complete record stays in the audit log on stdout.
+- **Did BunkerWeb pick it up?** `GET /ips.txt` records when BunkerWeb last fetched the list.
+  The list header shows that time, and every entry carries ✓ when it changed before that
+  fetch or … when it is still waiting for the next one. The same mark appears next to the
+  visitor's own address.
+- **Backup and restore.** `GET /export` downloads all entries as JSON; the import form adds
+  the entries of such a file (existing networks take the file's label and end date, entries
+  that are already over are skipped, policy violations stop the import before anything is
+  written). Import bodies may be up to 256 KB.
+
 ## Install as an app
 
 The page is a progressive web app: browsers offer "Install" / "Add to Home Screen" and
@@ -213,6 +238,8 @@ Re-pin dependencies to the newest releases with `scripts/compile-requirements.sh
 | `POST /logout` | session + CSRF | |
 | `GET /ips.txt` | direct requests from `LIST_ALLOWED_NETWORKS` | The list for BunkerWeb |
 | `GET /healthz` | everyone | `{"status":"ok"}`, 503 when the background loop has stopped |
+| `GET /export` | session | JSON backup of all entries |
+| `POST /import` | session + CSRF | Restore entries from such a backup (≤ 256 KB) |
 | `GET /sw.js`, `GET /offline`, `GET /static/manifest.webmanifest` | everyone | Installable-app shell, holds no data |
 
 ## Security audit

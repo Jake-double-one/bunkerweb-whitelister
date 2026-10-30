@@ -209,6 +209,7 @@ class Syncer:
             try:
                 for entry in self.store.expired_between(last_tick, now):
                     log.info("entry expired: %s (%s)", entry.network, entry.label)
+                    self.store.event_add("expire", entry.network, entry.label, "", now)
                     self.client.status.pending = True
                 last_tick = now
                 for entry in self.store.purge_expired(now - timedelta(days=self.settings.expired_retention_days)):

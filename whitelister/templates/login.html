@@ -9,6 +9,7 @@
   </div>
 
   <form class="card narrow" method="post" action="/login" autocomplete="on">
+    {% if next and next != '/' %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
     <p class="eyebrow">{{ t('login.eyebrow') }}</p>
     <div class="field">
       <label for="password">{{ t('login.password') }}</label>

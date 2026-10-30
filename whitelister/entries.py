@@ -10,10 +10,12 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
+from typing import Any
 
 from .config import IPNetwork, Settings
 
 MAX_LABEL = 64
+_MAX_EVENTS = 200
 _MAX_ENTRIES = 5000
 
 
@@ -91,6 +93,7 @@ class Entry:
     created_at: datetime
     expires_at: datetime | None  # None = never
     created_by: str
+    updated_at: datetime
 
     def is_expired(self, now: datetime) -> bool:
         return self.expires_at is not None and self.expires_at <= now
@@ -124,23 +127,42 @@ class EntryStore:
                 label TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL,
                 expires_at TEXT,
-                created_by TEXT NOT NULL DEFAULT ''
+                created_by TEXT NOT NULL DEFAULT '',
+                updated_at TEXT
             )
             """
         )
+        if "updated_at" not in {r["name"] for r in self._conn.execute("PRAGMA table_info(entries)")}:
+            self._conn.execute("ALTER TABLE entries ADD COLUMN updated_at TEXT")
+        self._conn.execute("UPDATE entries SET updated_at = created_at WHERE updated_at IS NULL")
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                at TEXT NOT NULL,
+                action TEXT NOT NULL,
+                network TEXT NOT NULL,
+                label TEXT NOT NULL DEFAULT '',
+                actor TEXT NOT NULL DEFAULT ''
+            )
+            """
+        )
+        self._conn.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
 
     def close(self) -> None:
         self._conn.close()
 
     @staticmethod
     def _row(row: sqlite3.Row) -> Entry:
+        created = _dt(row["created_at"])
         return Entry(
-            id=row["id"],
+            id=int(row["id"]),
             network=row["network"],
             label=row["label"],
-            created_at=_dt(row["created_at"]) or datetime.now(UTC),
+            created_at=created,
             expires_at=_dt(row["expires_at"]),
             created_by=row["created_by"],
+            updated_at=_dt(row["updated_at"]) or created,
         )
 
     def list(self) -> list[Entry]:
@@ -169,21 +191,25 @@ class EntryStore:
                 raise ValidationError("error.too_many_entries", max=_MAX_ENTRIES)
             self._conn.execute(
                 """
-                INSERT INTO entries (network, label, created_at, expires_at, created_by)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO entries (network, label, created_at, expires_at, created_by, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(network) DO UPDATE SET
                     label = CASE WHEN excluded.label = '' THEN entries.label ELSE excluded.label END,
                     expires_at = excluded.expires_at,
-                    created_by = excluded.created_by
+                    created_by = excluded.created_by,
+                    updated_at = excluded.updated_at
                 """,
-                (network, label, _iso(now), _iso(expires_at), created_by),
+                (network, label, _iso(now), _iso(expires_at), created_by, _iso_exact(now)),
             )
             row = self._conn.execute("SELECT * FROM entries WHERE network = ?", (network,)).fetchone()
         return self._row(row)
 
-    def set_expiry(self, entry_id: int, expires_at: datetime | None) -> Entry | None:
+    def set_expiry(self, entry_id: int, expires_at: datetime | None, now: datetime | None = None) -> Entry | None:
         with self._lock:
-            cur = self._conn.execute("UPDATE entries SET expires_at = ? WHERE id = ?", (_iso(expires_at), entry_id))
+            cur = self._conn.execute(
+                "UPDATE entries SET expires_at = ?, updated_at = ? WHERE id = ?",
+                (_iso(expires_at), _iso_exact(now or datetime.now(UTC)), entry_id),
+            )
             if cur.rowcount == 0:
                 return None
             row = self._conn.execute("SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
@@ -220,6 +246,36 @@ class EntryStore:
             ).fetchall()
         return [r["network"] for r in rows]
 
+    # ---- history: a short, bounded log of what happened, shown on the page
+
+    def event_add(self, action: str, network: str, label: str, actor: str, now: datetime) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO events (at, action, network, label, actor) VALUES (?, ?, ?, ?, ?)",
+                (_iso(now), action, network, label, actor),
+            )
+            self._conn.execute("DELETE FROM events WHERE id NOT IN (SELECT id FROM events ORDER BY id DESC LIMIT ?)", (_MAX_EVENTS,))
+
+    def events_recent(self, limit: int = 5) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute("SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [
+            {"at": _dt(r["at"]), "action": r["action"], "network": r["network"], "label": r["label"], "actor": r["actor"]} for r in rows
+        ]
+
+    # ---- small key/value facts, e.g. when BunkerWeb last fetched the list
+
+    def meta_set(self, key: str, value: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value)
+            )
+
+    def meta_get(self, key: str) -> str | None:
+        with self._lock:
+            row = self._conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return None if row is None else str(row["value"])
+
     # ---- sessions: issued ids live here so logout really ends them
 
     def session_add(self, sid: str, expires_at: datetime) -> None:
@@ -244,6 +300,11 @@ def _iso(value: datetime | None) -> str | None:
     if value is None:
         return None
     return value.astimezone(UTC).replace(tzinfo=None, microsecond=0).isoformat()
+
+
+def _iso_exact(value: datetime) -> str:
+    """Full precision, for "changed after the last fetch?" comparisons within the same second."""
+    return value.astimezone(UTC).replace(tzinfo=None).isoformat()
 
 
 def is_list_token(value: str) -> bool:

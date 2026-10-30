@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from datetime import UTC, datetime, timedelta
 
@@ -704,5 +705,154 @@ def test_offline_page_needs_no_login_and_holds_no_data(make_client):
             assert r.status_code == 200
             assert "198.51.100.7" not in r.text and "secret label" not in r.text
             assert r.headers["cache-control"] == "no-store"
+
+    asyncio.run(run())
+
+
+# --- quality of life: quick extend, prefill links, history, fetch confirmation, backup -------
+
+
+async def _proxied(app):
+    transport = httpx.ASGITransport(app=app, client=("10.0.0.5", 40000))  # a trusted proxy forwarding 203.0.113.9
+    return httpx.AsyncClient(transport=transport, base_url="http://t", headers={"X-Forwarded-For": "203.0.113.9"})
+
+
+def _csrf(page: str) -> str:
+    return re.search(r'name="_csrf" value="([^"]+)"', page).group(1)
+
+
+def test_quick_extend_button_extends_own_listed_address(make_client, fake_bw):
+    app, store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            page = (await c.get("/")).text
+            assert "quick" not in page  # nothing listed yet: no quick button
+            await c.post("/entries", data={"network": "203.0.113.9", "label": "me", "duration": "7", "_csrf": _csrf(page)})
+            page = (await c.get("/")).text
+            m = re.search(r'action="/entries/(\d+)/extend" class="row quick".*?name="duration" value="(\d+)"', page, re.S)
+            assert m, "quick extend form missing"
+            before = store.get(int(m.group(1))).expires_at
+            r = await c.post(f"/entries/{m.group(1)}/extend", data={"duration": m.group(2), "_csrf": _csrf(page)})
+            assert r.status_code == 303
+            after = store.get(int(m.group(1))).expires_at
+            assert after - before == timedelta(days=int(m.group(2)))
+
+    asyncio.run(run())
+
+
+def test_prefill_link_survives_login_and_only_prefills(make_client, fake_bw):
+    app, store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            r = await c.get("/?add=me&days=7&label=Laptop")
+            assert r.status_code == 303 and r.headers["location"].startswith("/login?next=")
+            login_page = (await c.get(r.headers["location"])).text
+            assert 'name="next" value="/?add=me&amp;days=7&amp;label=Laptop"' in login_page
+            r = await c.post("/login", data={"password": PASSWORD, "next": "/?add=me&days=7&label=Laptop"})
+            assert r.headers["location"] == "/?add=me&days=7&label=Laptop"
+            page = (await c.get(r.headers["location"])).text
+            assert 'value="203.0.113.9"' in page and 'id="dur-7" value="7" checked' in page and 'value="Laptop"' in page
+            assert store.count() == 0  # a link never writes anything
+            # an outside destination is never followed
+            r = await c.post("/login", data={"password": PASSWORD, "next": "https://evil.example/"})
+            assert r.headers["location"] == "/"
+            r = await c.post("/login", data={"password": PASSWORD, "next": "//evil.example/x"})
+            assert r.headers["location"] == "/"
+            # a network in the link that violates the policy falls back to the visitor's address
+            page = (await c.get("/?add=10.0.0.0/8")).text
+            assert 'value="203.0.113.9"' in page
+
+    asyncio.run(run())
+
+
+def test_history_shows_the_last_five_actions(make_client, fake_bw):
+    app, _store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            page = (await c.get("/")).text
+            assert "history" not in page
+            for i in range(7):
+                await c.post("/entries", data={"network": f"198.51.100.{i}", "label": f"h{i}", "duration": "7", "_csrf": _csrf(page)})
+            page = (await c.get("/")).text
+            rows = re.findall(r"<li><span class=\"mono micro\">[^<]+</span> <span>([^<]+)</span></li>", page)
+            assert len(rows) == 5
+            assert rows[0].startswith("198.51.100.6") and "h6" in rows[0]
+            assert "198.51.100.0" not in "".join(rows)
+
+    asyncio.run(run())
+
+
+def test_entries_show_whether_bunkerweb_picked_them_up(make_client, fake_bw):
+    app, _store, _settings = make_client(LIST_ALLOWED_NETWORKS="127.0.0.0/8", LIST_TOKEN=None)
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            page = (await c.get("/")).text
+            csrf = _csrf(page)
+            await c.post("/entries", data={"network": "198.51.100.1", "duration": "7", "_csrf": csrf})
+            page = (await c.get("/")).text
+            assert "has not fetched the list yet" in page
+            assert 'data-ok="no"' in page and 'data-ok="yes"' not in page
+        # BunkerWeb fetches the list (a direct request without forwarding headers)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app, client=("127.0.0.1", 5000)), base_url="http://t") as bw:
+            assert (await bw.get("/ips.txt")).status_code == 200
+        async with await _proxied(app) as c:
+            await login(c)
+            page = (await c.get("/")).text
+            assert "last fetched the list at" in page
+            assert 'data-ok="yes"' in page and 'data-ok="no"' not in page
+            # a later change is unconfirmed again until the next fetch
+            await c.post("/entries", data={"network": "198.51.100.2", "duration": "7", "_csrf": _csrf(page)})
+            page = (await c.get("/")).text
+            assert 'data-ok="no"' in page and 'data-ok="yes"' in page
+
+    asyncio.run(run())
+
+
+def test_export_and_import_round_trip(make_client, fake_bw):
+    app, store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            assert (await c.get("/export")).status_code == 303  # login required
+            await login(c)
+            page = (await c.get("/")).text
+            csrf = _csrf(page)
+            await c.post("/entries", data={"network": "198.51.100.1", "label": "one", "duration": "7", "_csrf": csrf})
+            await c.post("/entries", data={"network": "198.51.100.0/24", "label": "net", "duration": "forever", "_csrf": csrf})
+            r = await c.get("/export")
+            assert r.status_code == 200 and r.headers["content-disposition"].startswith("attachment;")
+            data = r.json()
+            assert data["format"] == "bunkerweb-whitelister/1" and len(data["entries"]) == 2
+            # wipe and restore, with one entry that is already over
+            for e in store.list():
+                store.delete(e.id)
+            data["entries"].append({"network": "198.51.100.9", "label": "old", "expires_at": "2020-01-01T00:00:00+00:00"})
+            files = {"file": ("whitelist.json", json.dumps(data).encode(), "application/json")}
+            r = await c.post("/import", data={"_csrf": csrf}, files=files)
+            assert r.status_code == 303
+            page = (await c.get("/")).text
+            assert "2 entries imported, 1 already over and skipped." in page
+            assert {e.network: e.label for e in store.list()} == {"198.51.100.1": "one", "198.51.100.0/24": "net"}
+            assert store.get(store.find("198.51.100.0/24").id).expires_at is None
+            # garbage, policy violations and oversize are refused without touching the list
+            r = await c.post("/import", data={"_csrf": csrf}, files={"file": ("x.json", b"not json", "application/json")})
+            assert "not a whitelist export" in (await c.get("/")).text
+            bad = json.dumps({"entries": [{"network": "10.0.0.0/8", "label": "private"}]}).encode()
+            await c.post("/import", data={"_csrf": csrf}, files={"file": ("x.json", bad, "application/json")})
+            assert "Import stopped at 10.0.0.0/8" in (await c.get("/")).text
+            big = b"[" + b" " * (300 * 1024) + b"]"
+            r = await c.post("/import", data={"_csrf": csrf}, files={"file": ("x.json", big, "application/json")})
+            assert r.status_code == 413
+            assert store.count() == 2
+            # no CSRF token: refused
+            r = await c.post("/import", files={"file": ("x.json", json.dumps(data).encode(), "application/json")})
+            assert "expired" in (await c.get("/")).text or store.count() == 2
 
     asyncio.run(run())

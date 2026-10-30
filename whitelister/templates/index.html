@@ -17,33 +17,42 @@
       {% elif listed and listed.expires_at is none %}{{ t('hero.listed_forever') }}
       {% elif listed %}{{ t('hero.listed', until=listed.expires_at | dt) }}
       {% else %}{{ t('hero.not_listed') }}{% endif %}
+      {% if listed and api_enabled %}<span class="micro confirm" data-ok="{{ 'yes' if listed_confirmed else 'no' }}">{% if listed_confirmed %}{{ t('hero.confirmed', at=list_fetched_at | dt) }}{% else %}{{ t('hero.unconfirmed') }}{% endif %}</span>{% endif %}
     </p>
+    {% if listed and listed.expires_at is not none %}
+    <form method="post" action="/entries/{{ listed.id }}/extend" class="row quick">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      <input type="hidden" name="duration" value="{{ quick_extend_days }}">
+      <button type="submit" class="chip on">{{ t('hero.quick_extend', days=t.plural('add.day', quick_extend_days)) }}</button>
+    </form>
+    {% endif %}
   </div>
 
   {% if flash %}
   <div class="hint{% if flash.kind == 'alert' %} alert{% endif %}" role="status"><span>{{ flash.text }}</span></div>
   {% endif %}
 
-  <form class="card" method="post" action="/entries" data-duration-group>
+  <form class="card" method="post" action="/entries" data-duration-group id="add-form">
     <p class="eyebrow">{{ t('add.eyebrow') }}</p>
     <input type="hidden" name="_csrf" value="{{ csrf }}">
+    {% if prefill %}<div class="hint" role="status"><span>{{ t('add.prefilled') }}</span></div>{% endif %}
     <div class="field">
       <label for="network">{{ t('add.ip_label') }}</label>
       <div class="row">
-        <input id="network" name="network" type="text" class="mono ip" value="{{ client_ip or '' }}" spellcheck="false" autocomplete="off" required maxlength="64" inputmode="text">
+        <input id="network" name="network" type="text" class="mono ip" value="{{ prefill.network if prefill else (client_ip or '') }}" spellcheck="false" autocomplete="off" required maxlength="64" inputmode="text">
         {% if client_ip %}<button type="button" class="chip on" id="my-ip" data-ip="{{ client_ip }}">{{ t('add.my_ip') }}</button>{% endif %}
         <button type="button" class="chip" id="net24">{{ t('add.net24') }}</button>
       </div>
     </div>
     <div class="field">
       <label for="label">{{ t('add.label') }}</label>
-      <input id="label" name="label" type="text" class="wide" placeholder="{{ t('add.label_placeholder') }}" maxlength="64" autocomplete="off">
+      <input id="label" name="label" type="text" class="wide" value="{{ prefill.label if prefill else '' }}" placeholder="{{ t('add.label_placeholder') }}" maxlength="64" autocomplete="off" data-suggest-label>
     </div>
     <fieldset class="field">
       <legend class="label">{{ t('add.duration') }}</legend>
       <div class="row chips">
         {% for d in presets %}
-        <input type="radio" name="duration" id="dur-{{ d }}" value="{{ d }}"{% if d == default_preset %} checked{% endif %}>
+        <input type="radio" name="duration" id="dur-{{ d }}" value="{{ d }}"{% if d == (prefill.days if prefill and prefill.days else default_preset) %} checked{% endif %}>
         <label class="chip" for="dur-{{ d }}">{{ t.plural('add.day', d) }}</label>
         {% endfor %}
         <input type="radio" name="duration" id="dur-forever" value="forever">
@@ -57,7 +66,7 @@
       </div>
     </fieldset>
     {% for d in presets %}
-    <div class="hint" data-hint="days-{{ d }}"{% if d != default_preset %} hidden{% endif %}><span>{{ t('add.hint_days', until=preset_ends[d] | dt) }}</span></div>
+    <div class="hint" data-hint="days-{{ d }}"{% if d != (prefill.days if prefill and prefill.days else default_preset) %} hidden{% endif %}><span>{{ t('add.hint_days', until=preset_ends[d] | dt) }}</span></div>
     {% endfor %}
     <div class="hint" data-hint="forever" hidden><span>{{ t('add.hint_forever') }}</span></div>
     <div class="hint" data-hint="date" hidden><span>{{ t('add.hint_date') }}</span></div>
@@ -78,14 +87,34 @@
     <div class="card list">
       <div class="list-head">
         <p class="eyebrow">{{ t.plural('list.eyebrow', entries | length) }}</p>
-        <span class="micro">{{ t('list.as_of', date=now | dt) }}</span>
+        <span class="micro">{% if api_enabled and list_fetched_at %}{{ t('list.fetched', date=list_fetched_at | dt) }}{% elif api_enabled %}{{ t('list.not_fetched') }}{% else %}{{ t('list.as_of', date=now | dt) }}{% endif %}</span>
       </div>
+      {% if entries | length >= 3 %}
+      <div class="list-tools" data-list-tools hidden>
+        <input type="search" class="mono" data-list-search placeholder="{{ t('list.search') }}" aria-label="{{ t('list.search') }}" autocomplete="off">
+        <div class="row chips" role="group" aria-label="{{ t('list.filter') }}">
+          <button type="button" class="chip on" data-list-filter="all">{{ t('list.filter_all') }}</button>
+          <button type="button" class="chip" data-list-filter="due">{{ t('stats.due_soon') }}</button>
+          <button type="button" class="chip" data-list-filter="forever">{{ t('stats.forever') }}</button>
+          <button type="button" class="chip" data-list-filter="expired">{{ t('stats.expired') }}</button>
+        </div>
+        <label class="micro sort"><span>{{ t('list.sort') }}</span>
+          <select data-list-sort>
+            <option value="expires">{{ t('list.sort_expires') }}</option>
+            <option value="label">{{ t('list.sort_label') }}</option>
+            <option value="network">{{ t('list.sort_network') }}</option>
+            <option value="newest">{{ t('list.sort_newest') }}</option>
+          </select>
+        </label>
+        <span class="micro" data-list-count data-template="{{ t('list.count', shown='{shown}', total='{total}') }}"></span>
+      </div>
+      {% endif %}
       {% if not entries %}
       <p class="empty">{{ t('list.empty') }}</p>
       {% endif %}
       {% for row in entries %}
       {% set e = row.entry %}
-      <div class="entry">
+      <div class="entry" data-network="{{ e.network }}" data-label="{{ e.label }}" data-expires="{{ e.expires_at.timestamp() | int if e.expires_at else '' }}" data-created="{{ e.created_at.timestamp() | int }}" data-state="{{ 'expired' if row.expired else ('forever' if row.forever else ('due' if row.due_soon else 'active')) }}">
         <div class="entry-row">
           <div class="entry-id">
             <span class="entry-net">{{ e.network }}</span>
@@ -93,11 +122,11 @@
           </div>
           <div class="entry-when">
             {% if row.forever %}
-            <span class="entry-until forever">{{ t('list.forever') }}</span>
+            <span class="entry-until forever">{{ t('list.forever') }}{% if api_enabled %} <span class="confirm" data-ok="{{ 'yes' if row.confirmed else 'no' }}" title="{{ t('list.confirmed') if row.confirmed else t('list.unconfirmed') }}">{{ '✓' if row.confirmed else '…' }}</span>{% endif %}</span>
             {% elif row.expired %}
             <span class="entry-until expired">{{ t('list.expired', date=e.expires_at | dt) }}</span>
             {% else %}
-            <span class="entry-until">{{ t('list.until', date=e.expires_at | dt) }}</span>
+            <span class="entry-until">{{ t('list.until', date=e.expires_at | dt) }}{% if api_enabled %} <span class="confirm" data-ok="{{ 'yes' if row.confirmed else 'no' }}" title="{{ t('list.confirmed') if row.confirmed else t('list.unconfirmed') }}">{{ '✓' if row.confirmed else '…' }}</span>{% endif %}</span>
             <div class="rail-line">
               <div class="rail-track" aria-hidden="true"><span class="seg-work" id="rail-{{ e.id }}"></span></div>
               <span class="entry-left">{{ t('list.remaining', remaining=row.remaining_text) }}</span>
@@ -142,7 +171,32 @@
         </form>
       </div>
       {% endfor %}
+      <p class="empty" data-list-empty hidden>{{ t('list.no_match') }}</p>
     </div>
+
+    {% if history %}
+    <div class="card history">
+      <p class="eyebrow">{{ t('history.eyebrow') }}</p>
+      <ul class="history-list">
+        {% for ev in history %}
+        <li><span class="mono micro">{{ ev.at | dt }}</span> <span>{{ t('history.' ~ ev.action, network=ev.network, label=(' · ' ~ ev.label) if ev.label else '') }}</span></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <details class="card backup">
+      <summary class="eyebrow">{{ t('backup.eyebrow') }}</summary>
+      <p class="note">{{ t('backup.text') }}</p>
+      <div class="row">
+        <a class="chip" href="/export" download>{{ t('backup.export') }}</a>
+        <form method="post" action="/import" enctype="multipart/form-data" class="row" data-confirm="{{ t('backup.import_confirm') }}">
+          <input type="hidden" name="_csrf" value="{{ csrf }}">
+          <input type="file" name="file" accept="application/json,.json" required class="file">
+          <button type="submit" class="chip">{{ t('backup.import') }}</button>
+        </form>
+      </div>
+    </details>
   </section>
 {% endblock %}
 
