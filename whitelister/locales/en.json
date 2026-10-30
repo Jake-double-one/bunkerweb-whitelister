@@ -97,5 +97,9 @@
   "footer.text": "Global whitelist · BunkerWeb fetches {url} · expired entries are removed by the container itself. 🌇",
   "footer.text_no_api": "Global whitelist · BunkerWeb API not configured, the list is only served at {url}. 🌇",
   "date.format": "%Y-%m-%d %H:%M",
-  "date.format_day": "%Y-%m-%d"
+  "date.format_day": "%Y-%m-%d",
+  "offline.eyebrow": "No connection",
+  "offline.title": "You are offline",
+  "offline.text": "The whitelist lives on the server, so there is nothing to show or change without a connection.",
+  "offline.retry": "Try again"
 }

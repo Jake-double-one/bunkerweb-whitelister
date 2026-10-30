@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ t('offline.title') }} · {{ t('app.title') }}{% endblock %}
+{% block content %}
+<section class="card">
+  <span class="eyebrow">{{ t('offline.eyebrow') }}</span>
+  <h1 class="hero-ip">{{ t('offline.title') }}</h1>
+  <p class="lead">{{ t('offline.text') }}</p>
+  <a class="chip chip-main" href="/">{{ t('offline.retry') }}</a>
+</section>
+{% endblock %}

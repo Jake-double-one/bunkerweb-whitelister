@@ -654,3 +654,55 @@ def test_forbidden_names_the_missing_permissions(make_client, fake_bw):
     client._client = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(403)), base_url="http://bw-api:8888")
     with pytest.raises(RuntimeError, match="cache_read, cache_delete or job_run"):
         asyncio.run(client.trigger_refresh())
+
+
+# --- Installable app (manifest, service worker, offline page) ---------------------------------
+
+
+def test_manifest_icons_and_service_worker_are_served(make_client):
+    app, _store, _settings = make_client()
+    from whitelister import __version__
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
+            manifest = await c.get("/static/manifest.webmanifest")
+            assert manifest.status_code == 200
+            data = manifest.json()
+            assert data["start_url"] == "/" and data["scope"] == "/" and data["display"] == "standalone"
+            for icon in data["icons"]:
+                r = await c.get(icon["src"])
+                assert r.status_code == 200, icon["src"]
+                assert r.headers["content-type"].startswith(icon["type"])
+            sw = await c.get("/sw.js")
+            assert sw.status_code == 200
+            assert sw.headers["content-type"].startswith("text/javascript")
+            assert sw.headers["cache-control"] == "no-store"  # the browser always re-checks the worker
+            assert f"'{__version__}'" in sw.text and "__VERSION__" not in sw.text
+            # everything the worker precaches exists, and nothing sensitive is on that list
+            precache = re.findall(r"^\s+'(/[^']+)',$", sw.text, re.M)
+            assert precache and all(p == "/offline" or p.startswith("/static/") for p in precache)
+            for path in precache:
+                r = await c.get(path)
+                assert r.status_code == 200, path
+            page = await c.get("/")
+            csp = page.headers["content-security-policy"]
+            for directive in ("manifest-src 'self'", "worker-src 'self'", "connect-src 'self'"):
+                assert directive in csp
+            assert 'rel="manifest"' in (await c.get("/login")).text
+
+    asyncio.run(run())
+
+
+def test_offline_page_needs_no_login_and_holds_no_data(make_client):
+    app, store, _settings = make_client()
+    now = datetime.now(UTC)
+    store.upsert("198.51.100.7", "secret label", now + timedelta(days=1), now, "203.0.113.1")
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
+            r = await c.get("/offline")
+            assert r.status_code == 200
+            assert "198.51.100.7" not in r.text and "secret label" not in r.text
+            assert r.headers["cache-control"] == "no-store"
+
+    asyncio.run(run())

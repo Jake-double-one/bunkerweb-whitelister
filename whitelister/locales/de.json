@@ -91,5 +91,9 @@
   "footer.text": "Globale Whitelist · BunkerWeb holt {url} · abgelaufene Einträge räumt der Container selbst weg. 🌇",
   "footer.text_no_api": "Globale Whitelist · BunkerWeb-API nicht eingerichtet, die Liste liegt nur unter {url}. 🌇",
   "date.format": "%d.%m.%Y %H:%M",
-  "date.format_day": "%d.%m.%Y"
+  "date.format_day": "%d.%m.%Y",
+  "offline.eyebrow": "Keine Verbindung",
+  "offline.title": "Du bist offline",
+  "offline.text": "Die Whitelist liegt auf dem Server. Ohne Verbindung gibt es hier nichts zu sehen oder zu ändern.",
+  "offline.retry": "Nochmal versuchen"
 }

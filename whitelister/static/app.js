@@ -11,8 +11,10 @@
   let stored = null;
   try { stored = localStorage.getItem(KEY); } catch (e) { stored = null; }
   const configured = root.dataset.defaultSkin || 'auto';
+  const themeMeta = document.querySelector('meta[name="theme-color"]');
   const apply = (skin) => {
     if (skin && SKINS.includes(skin)) root.dataset.theme = skin; else delete root.dataset.theme;
+    if (themeMeta) themeMeta.content = getComputedStyle(root).getPropertyValue('--bg').trim() || themeMeta.content;
     document.querySelectorAll('[data-skin-set]').forEach((b) => {
       b.setAttribute('aria-checked', String(b.dataset.skinSet === (root.dataset.theme || '')));
     });
@@ -55,6 +57,11 @@
       if (m) ip.value = `${m[1]}.${m[2]}.${m[3]}.0/24`;
       ip.focus();
     });
+  }
+
+  /* Installable app: the worker only caches /static/ and the offline page, never a logged-in page */
+  if ('serviceWorker' in navigator && window.isSecureContext) {
+    navigator.serviceWorker.register('/sw.js').catch(() => { /* optional */ });
   }
 
   /* Ask before removing */

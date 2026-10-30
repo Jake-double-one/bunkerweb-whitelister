@@ -180,6 +180,18 @@ All variables may be given as `NAME_FILE` (path to a secret) instead.
 Add `fr.json` with the keys you want to translate and set `WHITELISTER_LANG=fr`;
 missing keys fall back to English. Plurals use `key.one` / `key.other`.
 
+## Install as an app
+
+The page is a progressive web app: browsers offer "Install" / "Add to Home Screen" and
+open it in its own window with the brand icon. Installation needs HTTPS (BunkerWeb in
+front provides it) and works on plain `http://localhost` for testing.
+
+The service worker keeps only the static shell (`/static/`: styles, script, fonts, icons)
+and the public `/offline` page in a cache named after the release, so an update replaces
+it completely. Pages, forms, the session and `/ips.txt` are never cached: every navigation
+goes to the network, and without a connection the offline page is shown instead. Nothing
+from the whitelist is stored on the device.
+
 ## Development
 
 ```bash
@@ -201,6 +213,7 @@ Re-pin dependencies to the newest releases with `scripts/compile-requirements.sh
 | `POST /logout` | session + CSRF | |
 | `GET /ips.txt` | direct requests from `LIST_ALLOWED_NETWORKS` | The list for BunkerWeb |
 | `GET /healthz` | everyone | `{"status":"ok"}`, 503 when the background loop has stopped |
+| `GET /sw.js`, `GET /offline`, `GET /static/manifest.webmanifest` | everyone | Installable-app shell, holds no data |
 
 ## Security audit
 

@@ -77,7 +77,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         h = response.headers
         h["Content-Security-Policy"] = (
             f"default-src 'none'; script-src 'self'; style-src 'self' 'nonce-{nonce}'; img-src 'self' data:; "
-            "font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
+            "font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; "
+            "form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
         )
         h["X-Content-Type-Options"] = "nosniff"
         h["X-Frame-Options"] = "DENY"
@@ -299,6 +300,17 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         if not syncer.alive():
             return JSONResponse({"status": "error", "detail": "background sync loop stopped"}, status_code=503)
         return JSONResponse({"status": "ok"})
+
+    sw_source = (BASE_DIR / "static" / "sw.js").read_text(encoding="utf-8").replace("__VERSION__", __version__)
+
+    @app.get("/sw.js", include_in_schema=False)
+    async def service_worker() -> Response:
+        # Served from the root so its scope covers the whole app; the version in it retires old caches.
+        return Response(sw_source, media_type="text/javascript; charset=utf-8")
+
+    @app.get("/offline", response_class=HTMLResponse, include_in_schema=False)
+    async def offline(request: Request) -> Response:
+        return templates.TemplateResponse(request, "offline.html", {})
 
     @app.get("/ips.txt", include_in_schema=False)
     async def ips_txt(request: Request) -> Response:
