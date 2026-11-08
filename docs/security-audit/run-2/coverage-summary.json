@@ -1,0 +1,507 @@
+[
+  {
+    "coverage_id": ".github%2Fworkflows%2Fci.yml%23image::.github%2Fworkflows%2Fci.yml%23permissions::ci::SUPPLY-CHAIN-AND-RELEASE.md%23Untrusted%20code%20in%20a%20privileged%20workflow",
+    "surface": ".github/workflows/ci.yml#image",
+    "boundary": ".github/workflows/ci.yml#permissions",
+    "subsystem": "ci",
+    "attack_class": "SUPPLY-CHAIN-AND-RELEASE.md#Untrusted code in a privileged workflow",
+    "status": "covered",
+    "agent_id": "w1-h7-deploy-ci",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": ".github%2Fworkflows%2Fci.yml%23image::Dockerfile%23pip%20install%20--require-hashes::ci::SUPPLY-CHAIN-AND-RELEASE.md%23Mutable%20and%20unbound%20build%20inputs",
+    "surface": ".github/workflows/ci.yml#image",
+    "boundary": "Dockerfile#pip install --require-hashes",
+    "subsystem": "ci",
+    "attack_class": "SUPPLY-CHAIN-AND-RELEASE.md#Mutable and unbound build inputs",
+    "status": "covered",
+    "agent_id": "w1-h7-deploy-ci",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "Dockerfile%23runtime%20stage::Dockerfile%23USER%2010001::deploy::CLOUD-AND-DEPLOYMENT.md%23Security-control%20precedence%20drift",
+    "surface": "Dockerfile#runtime stage",
+    "boundary": "Dockerfile#USER 10001",
+    "subsystem": "deploy",
+    "attack_class": "CLOUD-AND-DEPLOYMENT.md#Security-control precedence drift",
+    "status": "covered",
+    "agent_id": "w1-h7-deploy-ci",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "Dockerfile%23runtime%20stage::docker-compose.example.yml%23whitelister::deploy::CLOUD-AND-DEPLOYMENT.md%23Trusted-proxy%20and%20mesh%20identity%20bypass",
+    "surface": "Dockerfile#runtime stage",
+    "boundary": "docker-compose.example.yml#whitelister",
+    "subsystem": "deploy",
+    "attack_class": "CLOUD-AND-DEPLOYMENT.md#Trusted-proxy and mesh identity bypass",
+    "status": "candidate",
+    "agent_id": "w1-h7-deploy-ci",
+    "wave": 1,
+    "result_fingerprints": [
+      "docker-compose.example.yml:whitelister:dual-network:bunkerweb-unpinned-on-bw-universe-outside-TRUSTED_PROXIES"
+    ]
+  },
+  {
+    "coverage_id": "docker-compose.example.yml%23bunkerweb::whitelister%2Fapp.py%23POST%20%2Fi%2F%7Btoken%7D::deploy::CLOUD-AND-DEPLOYMENT.md%23Security-control%20precedence%20drift",
+    "surface": "docker-compose.example.yml#bunkerweb",
+    "boundary": "whitelister/app.py#POST /i/{token}",
+    "subsystem": "deploy",
+    "attack_class": "CLOUD-AND-DEPLOYMENT.md#Security-control precedence drift",
+    "status": "covered",
+    "agent_id": "w4-h21-edge-exemption",
+    "wave": 4,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "docker-compose.example.yml%23bw-scheduler::whitelister%2Fapp.py%23GET%20%2Fips.txt::deploy::CLOUD-AND-DEPLOYMENT.md%23Trusted-proxy%20and%20mesh%20identity%20bypass",
+    "surface": "docker-compose.example.yml#bw-scheduler",
+    "boundary": "whitelister/app.py#GET /ips.txt",
+    "subsystem": "deploy",
+    "attack_class": "CLOUD-AND-DEPLOYMENT.md#Trusted-proxy and mesh identity bypass",
+    "status": "covered",
+    "agent_id": "w4-h20-list-reader-topology",
+    "wave": 4,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%23package::whitelister%2Fapp.py%23create_app::whitelister::ATTACK-CLASSES.md%23Obvious%20things",
+    "surface": "whitelister#package",
+    "boundary": "whitelister/app.py#create_app",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Obvious things",
+    "status": "covered",
+    "agent_id": "w1-h8-wild",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%23package::whitelister%2Fapp.py%23create_app::whitelister::ATTACK-CLASSES.md%23Wildcard",
+    "surface": "whitelister#package",
+    "boundary": "whitelister/app.py#create_app",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Wildcard",
+    "status": "candidate",
+    "agent_id": "w1-h8-wild",
+    "wave": 1,
+    "result_fingerprints": [
+      "whitelister/app.py:invite_redeem/refresh_after_change:unthrottled-known-address-renewal",
+      "whitelister/app.py:invite_redeem:upsert-overwrites-operator-entry"
+    ]
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23GET%20%2F::whitelister%2Fapp.py%23SecurityHeadersMiddleware::whitelister::ATTACK-CLASSES.md%23Injection",
+    "surface": "whitelister/app.py#GET /",
+    "boundary": "whitelister/app.py#SecurityHeadersMiddleware",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Injection",
+    "status": "covered",
+    "agent_id": "w1-h5-render-abuse",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23GET%20%2F::whitelister%2Fapp.py%23require_post::whitelister::ATTACK-CLASSES.md%23Feature%20abuse%20and%20data%20leakage",
+    "surface": "whitelister/app.py#GET /",
+    "boundary": "whitelister/app.py#require_post",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+    "status": "candidate",
+    "agent_id": "w5-h22-prefill-render",
+    "wave": 5,
+    "result_fingerprints": [
+      "whitelister/app.py/prefill_from_query/unhandled-ValidationError-ValueError"
+    ]
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23GET%20%2Fexport::whitelister%2Fapp.py%23current_session::whitelister::DATA-ISOLATION-AND-LIFECYCLE.md%23Export%20and%20backup%20scope%20expansion",
+    "surface": "whitelister/app.py#GET /export",
+    "boundary": "whitelister/app.py#current_session",
+    "subsystem": "whitelister",
+    "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Export and backup scope expansion",
+    "status": "covered",
+    "agent_id": "w1-h11-data",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23GET%20%2Fi%2F%7Btoken%7D::docker-compose.example.yml%23bunkerweb::deploy::DATA-ISOLATION-AND-LIFECYCLE.md%23Analytics%2C%20logs%2C%20traces%2C%20and%20diagnostics%20as%20alternate%20readers",
+    "surface": "whitelister/app.py#GET /i/{token}",
+    "boundary": "docker-compose.example.yml#bunkerweb",
+    "subsystem": "deploy",
+    "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Analytics, logs, traces, and diagnostics as alternate readers",
+    "status": "out_of_scope",
+    "agent_id": null,
+    "wave": 2,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23GET%20%2Fi%2F%7Btoken%7D::whitelister%2Fapp.py%23open_invite::whitelister::ATTACK-CLASSES.md%23Access%20control",
+    "surface": "whitelister/app.py#GET /i/{token}",
+    "boundary": "whitelister/app.py#open_invite",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Access control",
+    "status": "covered",
+    "agent_id": "w1-h9-invite-auth",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23GET%20%2Fi%2F%7Btoken%7D::whitelister%2Ftemplates%2Finvite.html%23inline%20style%20nonce::whitelister::ATTACK-CLASSES.md%23Injection",
+    "surface": "whitelister/app.py#GET /i/{token}",
+    "boundary": "whitelister/templates/invite.html#inline style nonce",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Injection",
+    "status": "covered",
+    "agent_id": "w1-h10-invite-abuse",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23GET%20%2Fips.txt::whitelister%2Fentries.py%23meta_set::whitelister::ATTACK-CLASSES.md%23Business%20logic",
+    "surface": "whitelister/app.py#GET /ips.txt",
+    "boundary": "whitelister/entries.py#meta_set",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Business logic",
+    "status": "covered",
+    "agent_id": "w1-h11-data",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23GET%20%2Fips.txt::whitelister%2Fsecurity.py%23has_forwarding_headers::whitelister::ATTACK-CLASSES.md%23Access%20control",
+    "surface": "whitelister/app.py#GET /ips.txt",
+    "boundary": "whitelister/security.py#has_forwarding_headers",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Access control",
+    "status": "candidate",
+    "agent_id": "w1-h2-proxy-list",
+    "wave": 1,
+    "result_fingerprints": [
+      "whitelister/app.py:ips_txt:direct-gate-ignores-trusted-proxies-and-client-ip-header"
+    ]
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23GET%20%2Flogin::whitelister%2Fapp.py%23safe_next::whitelister::ATTACK-CLASSES.md%23Feature%20abuse%20and%20data%20leakage",
+    "surface": "whitelister/app.py#GET /login",
+    "boundary": "whitelister/app.py#safe_next",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+    "status": "covered",
+    "agent_id": "w1-h12-links-pwa",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Fentries%2F%7Bentry_id%7D%2Fdelete::whitelister%2Fentries.py%23invite_touch_address::whitelister::ATTACK-CLASSES.md%23Business%20logic",
+    "surface": "whitelister/app.py#POST /entries/{entry_id}/delete",
+    "boundary": "whitelister/entries.py#invite_touch_address",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Business logic",
+    "status": "candidate",
+    "agent_id": "w2-h13-revocation",
+    "wave": 2,
+    "result_fingerprints": [
+      "whitelister/entries.py:EntryStore.delete:invite_addresses-stale-known-readd"
+    ]
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Fentries%2F%7Bentry_id%7D%2Fextend::whitelister%2Fentries.py%23policy_violations::whitelister::DATA-ISOLATION-AND-LIFECYCLE.md%23Stale%20authorization%20and%20derived%20copy%20use",
+    "surface": "whitelister/app.py#POST /entries/{entry_id}/extend",
+    "boundary": "whitelister/entries.py#policy_violations",
+    "subsystem": "whitelister",
+    "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Stale authorization and derived copy use",
+    "status": "covered",
+    "agent_id": "w2-h17-extend-policy",
+    "wave": 2,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Fentries::whitelister%2Fapp.py%23require_post::whitelister::WEB-PROTOCOL-AND-AUTH.md%23Ordinary%20CSRF",
+    "surface": "whitelister/app.py#POST /entries",
+    "boundary": "whitelister/app.py#require_post",
+    "subsystem": "whitelister",
+    "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Ordinary CSRF",
+    "status": "covered",
+    "agent_id": "w1-h1-auth",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Fentries::whitelister%2Fentries.py%23EntryStore::whitelister::ATTACK-CLASSES.md%23Business%20logic",
+    "surface": "whitelister/app.py#POST /entries",
+    "boundary": "whitelister/entries.py#EntryStore",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Business logic",
+    "status": "covered",
+    "agent_id": "w1-h4-entries",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Fentries::whitelister%2Fentries.py%23parse_network::whitelister::ATTACK-CLASSES.md%23Injection",
+    "surface": "whitelister/app.py#POST /entries",
+    "boundary": "whitelister/entries.py#parse_network",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Injection",
+    "status": "covered",
+    "agent_id": "w1-h4-entries",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Fentries::whitelister%2Fentries.py%23render_list::whitelister::ATTACK-CLASSES.md%23Chained%20vulnerabilities%20and%20trust%20boundaries",
+    "surface": "whitelister/app.py#POST /entries",
+    "boundary": "whitelister/entries.py#render_list",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+    "status": "covered",
+    "agent_id": "w1-h4-entries",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Fi%2F%7Btoken%7D::whitelister%2Fapp.py%23create_invite::whitelister::DATA-ISOLATION-AND-LIFECYCLE.md%23Stale%20authorization%20and%20derived%20copy%20use",
+    "surface": "whitelister/app.py#POST /i/{token}",
+    "boundary": "whitelister/app.py#create_invite",
+    "subsystem": "whitelister",
+    "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Stale authorization and derived copy use",
+    "status": "candidate",
+    "agent_id": "w3-h18-redeem-duration",
+    "wave": 3,
+    "result_fingerprints": [
+      "whitelister/app.py:invite_redeem:access_days-not-capped-by-current-max_days"
+    ]
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Fi%2F%7Btoken%7D::whitelister%2Fapp.py%23same_origin::whitelister::WEB-PROTOCOL-AND-AUTH.md%23Ordinary%20CSRF",
+    "surface": "whitelister/app.py#POST /i/{token}",
+    "boundary": "whitelister/app.py#same_origin",
+    "subsystem": "whitelister",
+    "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Ordinary CSRF",
+    "status": "covered",
+    "agent_id": "w1-h9-invite-auth",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Fi%2F%7Btoken%7D::whitelister%2Fbunkerweb.py%23BunkerWebClient.trigger_refresh::whitelister::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Worker%2C%20pool%2C%20and%20priority%20starvation",
+    "surface": "whitelister/app.py#POST /i/{token}",
+    "boundary": "whitelister/bunkerweb.py#BunkerWebClient.trigger_refresh",
+    "subsystem": "whitelister",
+    "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Worker, pool, and priority starvation",
+    "status": "candidate",
+    "agent_id": "w2-h15-redeem-starvation",
+    "wave": 2,
+    "result_fingerprints": [
+      "whitelister/app.py:invite_redeem/refresh_after_change:unthrottled-known-address-renewal"
+    ]
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Fi%2F%7Btoken%7D::whitelister%2Fentries.py%23EntryStore.upsert::whitelister::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Unbounded%20buffering%20and%20cardinality",
+    "surface": "whitelister/app.py#POST /i/{token}",
+    "boundary": "whitelister/entries.py#EntryStore.upsert",
+    "subsystem": "whitelister",
+    "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Unbounded buffering and cardinality",
+    "status": "covered",
+    "agent_id": "w4-h19-invite-cardinality",
+    "wave": 4,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Fi%2F%7Btoken%7D::whitelister%2Fentries.py%23invite_touch_address::whitelister::ATTACK-CLASSES.md%23Business%20logic",
+    "surface": "whitelister/app.py#POST /i/{token}",
+    "boundary": "whitelister/entries.py#invite_touch_address",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Business logic",
+    "status": "candidate",
+    "agent_id": "w1-h9-invite-auth",
+    "wave": 1,
+    "result_fingerprints": [
+      "whitelister/app.py:invite_redeem:upsert-overwrites-operator-entry"
+    ]
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Fimport::whitelister%2Fapp.py%23_parse_import_expiry::whitelister::DATA-ISOLATION-AND-LIFECYCLE.md%23Import%20and%20restore%20authority%20expansion",
+    "surface": "whitelister/app.py#POST /import",
+    "boundary": "whitelister/app.py#_parse_import_expiry",
+    "subsystem": "whitelister",
+    "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Import and restore authority expansion",
+    "status": "covered",
+    "agent_id": "w1-h11-data",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Finvites%2F%7Binvite_id%7D%2Frevoke::whitelister%2Fentries.py%23invite_revoke::whitelister::DATA-ISOLATION-AND-LIFECYCLE.md%23Stale%20authorization%20and%20derived%20copy%20use",
+    "surface": "whitelister/app.py#POST /invites/{invite_id}/revoke",
+    "boundary": "whitelister/entries.py#invite_revoke",
+    "subsystem": "whitelister",
+    "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Stale authorization and derived copy use",
+    "status": "covered",
+    "agent_id": "w2-h13-revocation",
+    "wave": 2,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Finvites::whitelister%2Fapp.py%23public_origin::whitelister::WEB-PROTOCOL-AND-AUTH.md%23Host%20and%20forwarded-header%20trust",
+    "surface": "whitelister/app.py#POST /invites",
+    "boundary": "whitelister/app.py#public_origin",
+    "subsystem": "whitelister",
+    "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Host and forwarded-header trust",
+    "status": "covered",
+    "agent_id": "w1-h10-invite-abuse",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Flogin::whitelister%2Fsecurity.py%23LoginThrottle::whitelister::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Pre-authentication%20work%20imbalance",
+    "surface": "whitelister/app.py#POST /login",
+    "boundary": "whitelister/security.py#LoginThrottle",
+    "subsystem": "whitelister",
+    "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Pre-authentication work imbalance",
+    "status": "covered",
+    "agent_id": "w1-h3-avail",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Flogin::whitelister%2Fsecurity.py%23PasswordChecker::whitelister::ATTACK-CLASSES.md%23Access%20control",
+    "surface": "whitelister/app.py#POST /login",
+    "boundary": "whitelister/security.py#PasswordChecker",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Access control",
+    "status": "covered",
+    "agent_id": "w1-h1-auth",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23POST%20%2Flogin::whitelister%2Fsecurity.py%23throttle_key::whitelister::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Quota-accounting%20scope%20and%20reset%20gaps",
+    "surface": "whitelister/app.py#POST /login",
+    "boundary": "whitelister/security.py#throttle_key",
+    "subsystem": "whitelister",
+    "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Quota-accounting scope and reset gaps",
+    "status": "covered",
+    "agent_id": "w1-h3-avail",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23SecurityHeadersMiddleware::whitelister%2F__main__.py%23main::whitelister::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Unbounded%20buffering%20and%20cardinality",
+    "surface": "whitelister/app.py#SecurityHeadersMiddleware",
+    "boundary": "whitelister/__main__.py#main",
+    "subsystem": "whitelister",
+    "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Unbounded buffering and cardinality",
+    "status": "covered",
+    "agent_id": "w1-h3-avail",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23client_ip::whitelister%2Fsecurity.py%23resolve_client_ip::whitelister::WEB-PROTOCOL-AND-AUTH.md%23Host%20and%20forwarded-header%20trust",
+    "surface": "whitelister/app.py#client_ip",
+    "boundary": "whitelister/security.py#resolve_client_ip",
+    "subsystem": "whitelister",
+    "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Host and forwarded-header trust",
+    "status": "covered",
+    "agent_id": "w1-h2-proxy-list",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23open_invite::whitelister%2Fsecurity.py%23LoginThrottle::whitelister::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Quota-accounting%20scope%20and%20reset%20gaps",
+    "surface": "whitelister/app.py#open_invite",
+    "boundary": "whitelister/security.py#LoginThrottle",
+    "subsystem": "whitelister",
+    "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Quota-accounting scope and reset gaps",
+    "status": "candidate",
+    "agent_id": "w1-h10-invite-abuse",
+    "wave": 1,
+    "result_fingerprints": [
+      "whitelister/app.py:open_invite/invite_throttle:global-budget-shared-lockout"
+    ]
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23redeemer_network::whitelister%2Fentries.py%23parse_network::whitelister::ATTACK-CLASSES.md%23Business%20logic",
+    "surface": "whitelister/app.py#redeemer_network",
+    "boundary": "whitelister/entries.py#parse_network",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Business logic",
+    "status": "candidate",
+    "agent_id": "w2-h14-identity-canon",
+    "wave": 2,
+    "result_fingerprints": [
+      "whitelister/app.py:invite_redeem:upsert-overwrites-operator-entry"
+    ]
+  },
+  {
+    "coverage_id": "whitelister%2Fapp.py%23session%20cookie::whitelister%2Fsecurity.py%23SessionCodec::whitelister::WEB-PROTOCOL-AND-AUTH.md%23Session%20fixation%20and%20invalidation",
+    "surface": "whitelister/app.py#session cookie",
+    "boundary": "whitelister/security.py#SessionCodec",
+    "subsystem": "whitelister",
+    "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Session fixation and invalidation",
+    "status": "covered",
+    "agent_id": "w1-h1-auth",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fbunkerweb.py%23BunkerWebClient._request::whitelister%2Fbunkerweb.py%23_authenticate::whitelister::WEB-PROTOCOL-AND-AUTH.md%23API-key%20exposure%20and%20unsafe%20transport",
+    "surface": "whitelister/bunkerweb.py#BunkerWebClient._request",
+    "boundary": "whitelister/bunkerweb.py#_authenticate",
+    "subsystem": "whitelister",
+    "attack_class": "WEB-PROTOCOL-AND-AUTH.md#API-key exposure and unsafe transport",
+    "status": "covered",
+    "agent_id": "w1-h6-api-config",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fbunkerweb.py%23BunkerWebClient::whitelister%2Fconfig.py%23load_settings::whitelister::ATTACK-CLASSES.md%23Resource%20and%20file%20handling",
+    "surface": "whitelister/bunkerweb.py#BunkerWebClient",
+    "boundary": "whitelister/config.py#load_settings",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Resource and file handling",
+    "status": "covered",
+    "agent_id": "w1-h6-api-config",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fbunkerweb.py%23Syncer._run::whitelister%2Fbunkerweb.py%23BunkerWebClient._trigger::whitelister::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Retry%20storm%20and%20fail-open%20amplification",
+    "surface": "whitelister/bunkerweb.py#Syncer._run",
+    "boundary": "whitelister/bunkerweb.py#BunkerWebClient._trigger",
+    "subsystem": "whitelister",
+    "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Retry storm and fail-open amplification",
+    "status": "covered",
+    "agent_id": "w2-h16-sync-revocation",
+    "wave": 2,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fconfig.py%23load_settings::whitelister%2Fconfig.py%23_load_or_create_secret::whitelister::ATTACK-CLASSES.md%23Cryptography%20and%20secrets",
+    "surface": "whitelister/config.py#load_settings",
+    "boundary": "whitelister/config.py#_load_or_create_secret",
+    "subsystem": "whitelister",
+    "attack_class": "ATTACK-CLASSES.md#Cryptography and secrets",
+    "status": "covered",
+    "agent_id": "w1-h6-api-config",
+    "wave": 1,
+    "result_fingerprints": []
+  },
+  {
+    "coverage_id": "whitelister%2Fstatic%2Fsw.js%23fetch%20handler::whitelister%2Fstatic%2Fsw.js%23cacheable::whitelister::CLIENT-SIDE.md%23Service-worker%20cache%20and%20identity%20confusion",
+    "surface": "whitelister/static/sw.js#fetch handler",
+    "boundary": "whitelister/static/sw.js#cacheable",
+    "subsystem": "whitelister",
+    "attack_class": "CLIENT-SIDE.md#Service-worker cache and identity confusion",
+    "status": "covered",
+    "agent_id": "w1-h12-links-pwa",
+    "wave": 1,
+    "result_fingerprints": []
+  }
+]

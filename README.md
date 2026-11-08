@@ -287,6 +287,13 @@ target execution in an OS sandbox) was run on v0.1.0 before the fixes in this ve
 reports are under `docs/security-audit/run-1/`: two confirmed low findings (both fixed here,
 with regression tests) and three leads that need owner-observed BunkerWeb or deployment facts.
 
+A second full run (same profile, five hunter waves, seven coverage critics) was made on v0.4.2,
+focused on everything added since run-1 (invitation links, Open Graph preview, countdown,
+export/import, prefill links, PWA, Biscuit token auth). Reports under `docs/security-audit/run-2/`:
+five confirmed low findings (all on the seams of the invitation feature and the prefill link,
+fixed in 0.4.3 with regression tests), two leads that need owner-observed deployment facts, and
+all five run-1 leads re-examined and resolved in the current source.
+
 ## License
 
 MIT

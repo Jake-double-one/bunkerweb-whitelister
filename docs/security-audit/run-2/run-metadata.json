@@ -1,0 +1,34 @@
+{
+  "run_id": "bunkerweb-whitelister-run-2",
+  "repo": "Jake-double-one/bunkerweb-whitelister",
+  "source_ref": "4ce6e0de2fa27b1e60a7d9f7e87e5004ff3b0b01",
+  "profile": "standard",
+  "scope_paths": [
+    "whitelister/",
+    "tests/",
+    "Dockerfile",
+    "docker-compose.example.yml",
+    ".env.example",
+    ".github/",
+    "requirements.txt",
+    "pyproject.toml"
+  ],
+  "execution_policy": "sandboxed-source-and-local-only",
+  "run_status": "complete",
+  "started_at": "2026-11-08T14:24:06+00:00",
+  "completed_at": "2026-11-08T15:57:07+00:00",
+  "waves": 5,
+  "hunters": 22,
+  "verifiers_phase3": 10,
+  "verifiers_phase5": 7,
+  "discarded_agent_outputs": [
+    {
+      "agent": "v3-5",
+      "reason": "malformed JSON hand-back: 'remediation' object nested inside 'execution', closing brace missing; discarded unread per skill rule, re-run as v3-6"
+    },
+    {
+      "agent": "v3-2",
+      "reason": "malformed JSON hand-back: 'remediation' nested inside 'execution', closing brace missing; discarded unread per skill rule, re-run as v3-7"
+    }
+  ]
+}
