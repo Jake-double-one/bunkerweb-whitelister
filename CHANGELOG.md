@@ -9,21 +9,42 @@ All notable changes to bunkerweb-whitelister. The format follows
 
 ## [0.4.1] - 2026-11-08
 
-### Fixed
-- The invitation page rendered unstyled when `/static/` was not reachable for guests (login proxy
-  or whitelist in front). It now carries its stylesheet inline under the page's CSP nonce and
-  shows no skin switcher; nothing besides `/i/<token>` needs to be opened.
-
-## [0.4.0] - 2026-11-08
+Supersedes 0.4.0, whose release was withdrawn: its invitation page rendered unstyled behind
+a login proxy. Everything below is new since 0.3.0.
 
 ### Added
 - **Invitations**: shareable links for people whose address you do not know. A link carries a
-  name, the access period per address, its own validity and a budget of distinct addresses
-  (IPv6 per /64). The recipient opens it and presses one button; opening it again from a known
-  address only restarts that address's period. Links are shown once (only a hash is stored),
-  can be revoked, are throttled against guessing, and GET never changes anything. New card
-  **Invitations** on the page, redemptions in the history, `PUBLIC_URL` for the link origin.
-  The redeem path `/i/<token>` must be reachable without a login (see README).
+  name, the access period per address, its own validity (7/14/30 days) and a budget of distinct
+  addresses (IPv6 counted per /64, 0 = unlimited). The recipient opens it, sees a plain page in
+  the app's language and presses one button; the address they connect from goes on the list
+  under the link's name. Opening the link again from a known address only restarts that
+  address's period and costs nothing; colleagues can share one link, each new address uses one
+  slot. Links can be revoked at any time (addresses already listed stay until they expire).
+- New card **Invitations** on the page: create links, see open ones with their remaining budget
+  and redeemed addresses, revoke them. Creations, redemptions, renewals and revocations appear
+  in the history and the audit log.
+- `PUBLIC_URL` setting: the origin used in generated links (derived from the request when unset).
+
+### Security
+- Only a SHA-256 of an invitation token is stored, so a link is shown exactly once.
+- `GET /i/<token>` never changes anything; mail scanners and link previews cannot redeem a
+  link. The button is a same-origin POST. Unknown or closed tokens are throttled like wrong
+  passwords, and the page never says why a link failed. Closed links are purged after 30 days.
+- The invitation page carries its stylesheet inline under the request's CSP nonce and loads no
+  script, so only `/i/` has to be reachable for guests. Fonts fall back to system fonts when
+  `/static/` is blocked for them.
+
+### Changed
+- Dependencies: python-multipart 0.0.33; GitHub Actions checkout v7, build-push-action v7,
+  metadata-action v6.
+
+### Deployment notes
+- The redeem path `/i/<token>` must be reachable without a login: exclude `^/i/.*` in a login
+  proxy such as Authentik, and if BunkerWeb admits only whitelisted clients to the whitelister's
+  host, add `WHITELIST_URI=^/i/` (or `GREYLIST_URI=^/i/`) on that service.
+- Set `PUBLIC_URL` to the address people reach the whitelister at.
+- New tables `invites` and `invite_addresses` are created on first start; 0.3.0 databases are
+  migrated in place.
 
 ## [0.3.0] - 2026-10-30
 
@@ -98,8 +119,7 @@ First release.
   fixed; reports under `docs/security-audit/run-1/`.
 
 [Unreleased]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.1...HEAD
-[0.4.1]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.0...v0.4.1
-[0.4.0]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.3.0...v0.4.0
+[0.4.1]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.3.0...v0.4.1
 [0.3.0]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.1.1...v0.1.2
