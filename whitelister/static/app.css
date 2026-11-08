@@ -199,3 +199,25 @@ details.backup[open] > summary::after { content: " −"; }
 details.backup .note { margin: 10px 0 12px; }
 details.backup .row { align-items: center; }
 input.file { font-size: .82rem; color: var(--muted); max-width: 100%; }
+
+/* --- invitations */
+details.invites > summary { list-style: none; cursor: pointer; margin: 0; }
+details.invites > summary::-webkit-details-marker { display: none; }
+details.invites > summary::after { content: " +"; color: var(--muted); }
+details.invites[open] > summary::after { content: " −"; }
+details.invites .note { margin: 10px 0 12px; }
+.invite-form { display: flex; flex-direction: column; gap: 12px; }
+.invite-grid { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; align-items: center; max-width: 420px; }
+.invite-grid select { font: inherit; font-size: .9rem; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+.invite-link { flex-direction: column; align-items: stretch; gap: 8px; }
+.invite-link input { font-size: .85rem; }
+.invite-list { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.invite-item { border-top: 1px solid var(--line); padding-top: 12px; }
+.invite-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.invite-head form { margin-left: auto; }
+.invite-addresses { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: .9rem; }
+.invite-addresses li { display: flex; gap: 10px; align-items: baseline; }
+.invite-name { font-family: var(--sans); font-size: clamp(1.6rem, 4vw, 2.4rem); letter-spacing: -.01em; }
+.invite-card .lead { margin: 0 0 14px; }
+.invite-card form { margin: 6px 0 10px; }
+.invite-meta { display: block; margin-top: 8px; }

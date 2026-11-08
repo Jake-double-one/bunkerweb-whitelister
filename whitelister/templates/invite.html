@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ t('invite.page_title') }} · {{ t('app.title') }}{% endblock %}
+{% block header_status %}{% endblock %}
+
+{% block content %}
+  <div class="lede">
+    <p class="eyebrow">{{ t('invite.eyebrow') }}</p>
+    {% if invite %}<h1 class="invite-name">{{ invite.name }}</h1>{% else %}<h1 class="invite-name">{{ t('invite.closed_title') }}</h1>{% endif %}
+  </div>
+
+  <section class="card narrow invite-card">
+    {% if state == 'closed' %}
+      <p class="lead">{{ t('invite.closed_text') }}</p>
+    {% elif state == 'no_address' %}
+      <p class="lead">{{ t('invite.no_address') }}</p>
+    {% elif state == 'exhausted' %}
+      <p class="lead">{{ t('invite.exhausted') }}</p>
+    {% elif state == 'done' %}
+      <p class="lead">{{ t('invite.done', until=until | dt) }}</p>
+      <p class="note">{{ t('invite.done_note') }}</p>
+    {% else %}
+      {% if state == 'known' %}
+      <p class="lead">{{ t('invite.known', until=until | dt) }}</p>
+      {% else %}
+      <p class="lead">{{ t('invite.ready', days=t.plural('add.day', invite.access_days)) }}</p>
+      {% endif %}
+      <form method="post" action="" class="row">
+        <button type="submit" class="chip chip-main">{{ t('invite.button_refresh') if state == 'known' else t('invite.button') }}</button>
+      </form>
+    {% endif %}
+    {% if invite and state != 'closed' %}
+    <p class="micro invite-meta">
+      {% if remaining is none %}{{ t('invite.remaining_unlimited') }}{% else %}{{ t.plural('invite.remaining', remaining) }}{% endif %}
+      · {{ t('invite.valid_until', date=invite.valid_until | dt) }}
+    </p>
+    {% endif %}
+  </section>
+{% endblock %}
+
+{% block footer %}{{ t('invite.footer') }}{% endblock %}

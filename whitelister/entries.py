@@ -16,6 +16,7 @@ from .config import IPNetwork, Settings
 
 MAX_LABEL = 64
 _MAX_EVENTS = 200
+_MAX_INVITES = 100
 _MAX_ENTRIES = 5000
 
 
@@ -104,6 +105,28 @@ class Entry:
         return self.expires_at - now
 
 
+@dataclass(frozen=True)
+class Invite:
+    """A shareable link: whoever opens it can put their own address on the list."""
+
+    id: int
+    name: str
+    created_at: datetime
+    created_by: str
+    valid_until: datetime  # the link itself
+    access_days: int  # how long each redeemed address stays listed
+    max_addresses: int  # 0 = unlimited
+    revoked_at: datetime | None
+    used: int  # distinct addresses redeemed so far
+
+    def is_open(self, now: datetime) -> bool:
+        return self.revoked_at is None and self.valid_until > now
+
+    @property
+    def remaining(self) -> int | None:
+        return None if self.max_addresses == 0 else max(self.max_addresses - self.used, 0)
+
+
 def _dt(value: str | None) -> datetime | None:
     if value is None:
         return None
@@ -148,6 +171,33 @@ class EntryStore:
             """
         )
         self._conn.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS invites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token_hash TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                created_by TEXT NOT NULL DEFAULT '',
+                valid_until TEXT NOT NULL,
+                access_days INTEGER NOT NULL,
+                max_addresses INTEGER NOT NULL DEFAULT 0,
+                revoked_at TEXT
+            )
+            """
+        )
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS invite_addresses (
+                invite_id INTEGER NOT NULL REFERENCES invites(id) ON DELETE CASCADE,
+                network TEXT NOT NULL,
+                first_at TEXT NOT NULL,
+                last_at TEXT NOT NULL,
+                PRIMARY KEY (invite_id, network)
+            )
+            """
+        )
+        self._conn.execute("PRAGMA foreign_keys=ON")
 
     def close(self) -> None:
         self._conn.close()
@@ -275,6 +325,91 @@ class EntryStore:
         with self._lock:
             row = self._conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
         return None if row is None else str(row["value"])
+
+    # ---- invitations: only the token's hash is stored, the link itself is shown once
+
+    def _invite_row(self, row: sqlite3.Row) -> Invite:
+        used = self._conn.execute("SELECT COUNT(*) FROM invite_addresses WHERE invite_id = ?", (row["id"],)).fetchone()[0]
+        return Invite(
+            id=int(row["id"]),
+            name=row["name"],
+            created_at=_dt(row["created_at"]),
+            created_by=row["created_by"],
+            valid_until=_dt(row["valid_until"]),
+            access_days=int(row["access_days"]),
+            max_addresses=int(row["max_addresses"]),
+            revoked_at=_dt(row["revoked_at"]),
+            used=int(used),
+        )
+
+    def invite_create(
+        self, token_hash: str, name: str, valid_until: datetime, access_days: int, max_addresses: int, now: datetime, created_by: str
+    ) -> Invite:
+        with self._lock:
+            if (
+                self._conn.execute("SELECT COUNT(*) FROM invites WHERE revoked_at IS NULL AND valid_until > ?", (_iso(now),)).fetchone()[0]
+                >= _MAX_INVITES
+            ):
+                raise ValidationError("error.too_many_invites", max=_MAX_INVITES)
+            cur = self._conn.execute(
+                "INSERT INTO invites (token_hash, name, created_at, created_by, valid_until, access_days, max_addresses) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (token_hash, name, _iso(now), created_by, _iso(valid_until), access_days, max_addresses),
+            )
+            row = self._conn.execute("SELECT * FROM invites WHERE id = ?", (cur.lastrowid,)).fetchone()
+            return self._invite_row(row)
+
+    def invite_by_hash(self, token_hash: str) -> Invite | None:
+        with self._lock:
+            row = self._conn.execute("SELECT * FROM invites WHERE token_hash = ?", (token_hash,)).fetchone()
+            return None if row is None else self._invite_row(row)
+
+    def invite_get(self, invite_id: int) -> Invite | None:
+        with self._lock:
+            row = self._conn.execute("SELECT * FROM invites WHERE id = ?", (invite_id,)).fetchone()
+            return None if row is None else self._invite_row(row)
+
+    def invites_open(self, now: datetime) -> list[Invite]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM invites WHERE revoked_at IS NULL AND valid_until > ? ORDER BY id DESC", (_iso(now),)
+            ).fetchall()
+            return [self._invite_row(r) for r in rows]
+
+    def invite_revoke(self, invite_id: int, now: datetime) -> Invite | None:
+        with self._lock:
+            self._conn.execute("UPDATE invites SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", (_iso(now), invite_id))
+            row = self._conn.execute("SELECT * FROM invites WHERE id = ?", (invite_id,)).fetchone()
+            return None if row is None else self._invite_row(row)
+
+    def invite_addresses(self, invite_id: int) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT network, first_at, last_at FROM invite_addresses WHERE invite_id = ? ORDER BY first_at", (invite_id,)
+            ).fetchall()
+        return [{"network": r["network"], "first_at": _dt(r["first_at"]), "last_at": _dt(r["last_at"])} for r in rows]
+
+    def invite_touch_address(self, invite_id: int, network: str, now: datetime) -> bool:
+        """Record a redemption; True when the address is new to this invite (and counts against its budget)."""
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE invite_addresses SET last_at = ? WHERE invite_id = ? AND network = ?", (_iso(now), invite_id, network)
+            )
+            if cur.rowcount:
+                return False
+            self._conn.execute(
+                "INSERT INTO invite_addresses (invite_id, network, first_at, last_at) VALUES (?, ?, ?, ?)",
+                (invite_id, network, _iso(now), _iso(now)),
+            )
+            return True
+
+    def invites_purge(self, before: datetime) -> int:
+        """Forget links that have been closed (expired or revoked) for a while; their entries live on."""
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM invites WHERE valid_until <= ? OR (revoked_at IS NOT NULL AND revoked_at <= ?)", (_iso(before), _iso(before))
+            )
+            return cur.rowcount
 
     # ---- sessions: issued ids live here so logout really ends them
 

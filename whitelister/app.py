@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import ipaddress
 import json
 import logging
@@ -30,6 +31,7 @@ from .config import Settings
 from .entries import (
     Entry,
     EntryStore,
+    Invite,
     ValidationError,
     expiry_from_date,
     expiry_from_days,
@@ -61,6 +63,9 @@ SKINS = ("dark", "amoled", "sunset", "light", "mint", "mango")
 DUE_SOON = timedelta(days=3)
 MAX_IMPORT_BODY = 256 * 1024  # a JSON backup of the list; everything else stays at MAX_BODY
 HISTORY_ROWS = 5
+INVITE_LINK_DAYS = (7, 14, 30)  # how long a link can be redeemed
+INVITE_ADDRESS_CHOICES = (1, 3, 5, 10, 0)  # 0 = unlimited
+INVITE_KEEP_DAYS = 30  # closed links stay visible in the store this long for the history, then go
 QUICK_EXTEND_DAYS = 7
 LIST_FETCHED_KEY = "list_fetched_at"
 
@@ -111,6 +116,7 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
     flash_codec = URLSafeTimedSerializer(settings.session_secret, salt="whitelister.flash")
     checker = PasswordChecker(settings.password, settings.password_hash)
     throttle = LoginThrottle(settings.login_max_failures, settings.login_lock_seconds)
+    invite_throttle = LoginThrottle(settings.login_max_failures, settings.login_lock_seconds)  # unknown tokens cost like wrong passwords
     hash_slots = asyncio.Semaphore(2)  # password checks run in a thread, at most two at a time
     cookie_name = "__Host-wl_session" if settings.cookie_secure else "wl_session"
     flash_cookie = "__Host-wl_flash" if settings.cookie_secure else "wl_flash"
@@ -183,11 +189,14 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
             samesite="strict",
         )
 
-    def redirect_with_flash(url: str, kind: str, text: str) -> RedirectResponse:
+    def redirect_with_flash(url: str, kind: str, text: str, link: str | None = None) -> RedirectResponse:
         response = RedirectResponse(url, status_code=303)
+        payload = {"k": kind, "m": text}
+        if link:
+            payload["l"] = link
         response.set_cookie(
             flash_cookie,
-            flash_codec.dumps({"k": kind, "m": text}),
+            flash_codec.dumps(payload),
             max_age=60,
             path="/",
             secure=settings.cookie_secure,
@@ -206,7 +215,7 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         except BadSignature:
             return None
         if isinstance(data, dict) and isinstance(data.get("m"), str):
-            return {"kind": str(data.get("k", "info")), "text": data["m"]}
+            return {"kind": str(data.get("k", "info")), "text": data["m"], "link": data.get("l")}
         return None
 
     def same_origin(request: Request) -> bool:
@@ -256,6 +265,34 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         if q.get("days", "").isdigit() and int(q["days"]) in settings.duration_presets:
             days = int(q["days"])
         return {"network": network, "days": days, "label": normalize_label(q.get("label", ""))}
+
+    def public_origin(request: Request) -> str:
+        if settings.public_url:
+            return settings.public_url
+        scheme = "https" if settings.cookie_secure else request.url.scheme
+        return f"{scheme}://{request.headers.get('host', request.url.netloc)}"
+
+    def redeemer_network(ip_text: str | None) -> str | None:
+        """The network an invite redemption stands for: the IPv4 address itself, the /64 for IPv6."""
+        ip = parse_ip(ip_text) if ip_text else None
+        if ip is None:
+            return None
+        net = ipaddress.ip_network(ip if ip.version == 4 else f"{ip}/64", strict=False)
+        try:
+            return network_text(parse_network(str(net), settings))
+        except ValidationError:
+            return None
+
+    def invite_view(
+        request: Request, invite: Invite, now: datetime, state: str, until: datetime | None = None, status_code: int = 200
+    ) -> Response:
+        ip, _ = client_ip(request)
+        return templates.TemplateResponse(
+            request,
+            "invite.html",
+            {"invite": invite, "state": state, "until": until, "client_ip": ip, "now": now, "remaining": invite.remaining},
+            status_code=status_code,
+        )
 
     def list_fetched_at() -> datetime | None:
         raw = store.meta_get(LIST_FETCHED_KEY)
@@ -443,6 +480,10 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
             "quick_extend_days": QUICK_EXTEND_DAYS if QUICK_EXTEND_DAYS in settings.duration_presets else settings.duration_presets[0],
             "prefill": prefill_from_query(request, ip),
             "history": store.events_recent(HISTORY_ROWS),
+            "invites": [{"invite": i, "addresses": store.invite_addresses(i.id)} for i in store.invites_open(now)],
+            "invite_link_days": INVITE_LINK_DAYS,
+            "invite_address_choices": INVITE_ADDRESS_CHOICES,
+            "new_invite_link": None,
             "list_fetched_at": fetched,
             "entries": rows,
             "now": now,
@@ -466,6 +507,7 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         flash = pop_flash(request, response)
         if flash:
             context["flash"] = flash
+            context["new_invite_link"] = flash.get("link")
             response = templates.TemplateResponse(request, "index.html", context)
             response.delete_cookie(flash_cookie, path="/", secure=settings.cookie_secure, httponly=True, samesite="strict")
         return response
@@ -566,6 +608,133 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
             return redirect_with_flash("/", "alert", t("flash.sync_failed", error=sync_error))
         return redirect_with_flash("/", "info", t("flash.removed", network=entry.network))
 
+    @app.post("/invites", include_in_schema=False)
+    async def create_invite(
+        request: Request,
+        name: str = Form(default=""),
+        access_days: str = Form(default=""),
+        link_days: str = Form(default=""),
+        max_addresses: str = Form(default=""),
+        csrf_token: str = Form(default="", alias="_csrf"),
+    ) -> Response:
+        session = require_post(request, csrf_token)
+        if isinstance(session, Response):
+            return session
+        now = datetime.now(UTC)
+        clean_name = normalize_label(name)
+        if not clean_name:
+            return redirect_with_flash("/", "alert", t("invite.name_missing"))
+        try:
+            days = int(access_days)
+            if not 1 <= days <= settings.max_days:
+                raise ValueError
+            link = int(link_days)
+            if link not in INVITE_LINK_DAYS:
+                raise ValueError
+            budget = int(max_addresses)
+            if not 0 <= budget <= 1000:
+                raise ValueError
+        except ValueError:
+            return redirect_with_flash("/", "alert", t("error.duration_missing"))
+        token = secrets.token_urlsafe(24)
+        ip, _ = client_ip(request)
+        try:
+            invite = store.invite_create(_token_hash(token), clean_name, now + timedelta(days=link), days, budget, now, created_by=ip or "")
+        except ValidationError as exc:
+            return redirect_with_flash("/", "alert", t(exc.key, **exc.params))
+        audit_event(
+            request,
+            "invite.create",
+            invite=invite.id,
+            name=invite.name,
+            valid_until=_iso(invite.valid_until),
+            access_days=days,
+            max_addresses=budget,
+        )
+        store.event_add("invite_create", "", invite.name, ip or "", now)
+        url = f"{public_origin(request)}/i/{token}"
+        return redirect_with_flash("/", "info", t("invite.created", name=invite.name), link=url)
+
+    @app.post("/invites/{invite_id}/revoke", include_in_schema=False)
+    async def revoke_invite(request: Request, invite_id: int, csrf_token: str = Form(default="", alias="_csrf")) -> Response:
+        session = require_post(request, csrf_token)
+        if isinstance(session, Response):
+            return session
+        now = datetime.now(UTC)
+        invite = store.invite_revoke(invite_id, now)
+        if invite is None:
+            return redirect_with_flash("/", "alert", t("error.not_found"))
+        audit_event(request, "invite.revoke", invite=invite.id, name=invite.name)
+        remember(request, "invite_revoke", "", invite.name)
+        return redirect_with_flash("/", "info", t("invite.revoked", name=invite.name))
+
+    def open_invite(request: Request, token: str) -> tuple[Invite | None, Response | None]:
+        """Look the token up with the same lockout discipline as a password; never reveal why a link failed."""
+        ip, _ = client_ip(request)
+        key = throttle_key(parse_ip(ip)) if ip else None
+        if key is None:
+            return None, PlainTextResponse("forbidden", status_code=403)
+        if invite_throttle.retry_after(key):
+            return None, PlainTextResponse("too many attempts, try again later", status_code=429)
+        invite = store.invite_by_hash(_token_hash(token)) if 20 <= len(token) <= 64 else None
+        if invite is None or not invite.is_open(datetime.now(UTC)):
+            invite_throttle.record_failure(key)
+            audit_event(request, "invite.unknown_or_closed")
+            return None, templates.TemplateResponse(
+                request,
+                "invite.html",
+                {"invite": None, "state": "closed", "until": None, "client_ip": ip, "now": datetime.now(UTC), "remaining": None},
+                status_code=404,
+            )
+        invite_throttle.record_success(key)
+        return invite, None
+
+    @app.get("/i/{token}", response_class=HTMLResponse, include_in_schema=False)
+    async def invite_page(request: Request, token: str) -> Response:
+        """Shows what the link does and a button. A GET never changes anything: mail scanners and link previews fetch URLs."""
+        invite, refusal = open_invite(request, token)
+        if refusal is not None:
+            return refusal
+        now = datetime.now(UTC)
+        ip, _ = client_ip(request)
+        net = redeemer_network(ip)
+        known = net is not None and any(a["network"] == net for a in store.invite_addresses(invite.id))
+        if net is None:
+            return invite_view(request, invite, now, "no_address")
+        if not known and invite.remaining == 0:
+            return invite_view(request, invite, now, "exhausted")
+        existing = store.find(net) if known else None
+        return invite_view(request, invite, now, "known" if known else "ready", until=existing.expires_at if existing else None)
+
+    @app.post("/i/{token}", response_class=HTMLResponse, include_in_schema=False)
+    async def invite_redeem(request: Request, token: str) -> Response:
+        if not same_origin(request):
+            return PlainTextResponse("forbidden", status_code=403)
+        invite, refusal = open_invite(request, token)
+        if refusal is not None:
+            return refusal
+        now = datetime.now(UTC)
+        ip, _ = client_ip(request)
+        net = redeemer_network(ip)
+        if net is None:
+            return invite_view(request, invite, now, "no_address", status_code=400)
+        known = any(a["network"] == net for a in store.invite_addresses(invite.id))
+        if not known and invite.remaining == 0:
+            return invite_view(request, invite, now, "exhausted", status_code=409)
+        expires = now + timedelta(days=invite.access_days)
+        try:
+            entry = store.upsert(net, invite.name, expires, now, created_by=f"invite:{invite.name}")
+        except ValidationError as exc:
+            return redirect_with_flash("/", "alert", t(exc.key, **exc.params))
+        is_new = store.invite_touch_address(invite.id, net, now)
+        audit_event(request, "invite.redeem", invite=invite.id, name=invite.name, network=net, new_address=is_new, expires_at=_iso(expires))
+        store.event_add("invite_redeem" if is_new else "invite_refresh", net, invite.name, ip or "", now)
+        sync_error = await refresh_after_change(request)
+        if sync_error:
+            log.warning("invite redeemed but BunkerWeb refresh failed: %s", sync_error)
+        invite = store.invite_get(invite.id) or invite
+        return invite_view(request, invite, now, "done", until=entry.expires_at)
+
     @app.get("/export", include_in_schema=False)
     async def export_entries(request: Request) -> Response:
         session = current_session(request)
@@ -638,6 +807,10 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
 
 
 # ---------------------------------------------------------------- small helpers
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def _parse_import_expiry(raw: object, now: datetime, max_days: int) -> datetime | None:

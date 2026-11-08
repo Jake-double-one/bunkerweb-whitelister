@@ -174,6 +174,65 @@
       <p class="empty" data-list-empty hidden>{{ t('list.no_match') }}</p>
     </div>
 
+    <details class="card invites"{% if new_invite_link or invites %} open{% endif %}>
+      <summary class="eyebrow">{{ t('invite.admin_eyebrow') }}</summary>
+      <p class="note">{{ t('invite.admin_text') }}</p>
+      {% if new_invite_link %}
+      <div class="hint invite-link" role="status">
+        <span>{{ t('invite.share_hint') }}</span>
+        <input type="text" class="mono wide" readonly value="{{ new_invite_link }}" data-copy-source aria-label="{{ t('invite.link') }}">
+        <button type="button" class="chip" data-copy>{{ t('invite.copy') }}</button>
+      </div>
+      {% endif %}
+      <form method="post" action="/invites" class="invite-form">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <div class="field">
+          <label for="inv-name">{{ t('invite.name') }}</label>
+          <input id="inv-name" name="name" type="text" class="wide" placeholder="{{ t('invite.name_placeholder') }}" maxlength="64" required autocomplete="off">
+        </div>
+        <div class="invite-grid">
+          <label class="label" for="inv-access">{{ t('invite.access_days') }}</label>
+          <select id="inv-access" name="access_days">
+            {% for d in presets %}<option value="{{ d }}"{% if d == default_preset %} selected{% endif %}>{{ t.plural('add.day', d) }}</option>{% endfor %}
+          </select>
+          <label class="label" for="inv-link">{{ t('invite.link_days') }}</label>
+          <select id="inv-link" name="link_days">
+            {% for d in invite_link_days %}<option value="{{ d }}"{% if loop.index == 2 %} selected{% endif %}>{{ t.plural('add.day', d) }}</option>{% endfor %}
+          </select>
+          <label class="label" for="inv-max">{{ t('invite.max_addresses') }}</label>
+          <select id="inv-max" name="max_addresses">
+            {% for n in invite_address_choices %}<option value="{{ n }}"{% if n == 3 %} selected{% endif %}>{% if n == 0 %}{{ t('invite.unlimited') }}{% else %}{{ n }}{% endif %}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="row">
+          <button type="submit" class="chip on">{{ t('invite.create') }}</button>
+          <span class="micro">{{ t('invite.create_note') }}</span>
+        </div>
+      </form>
+      {% if invites %}
+      <ul class="invite-list">
+        {% for row in invites %}
+        {% set inv = row.invite %}
+        <li class="invite-item">
+          <div class="invite-head">
+            <strong>{{ inv.name }}</strong>
+            <span class="micro">{{ t('invite.summary', access=t.plural('add.day', inv.access_days), until=inv.valid_until | dt) }} · {% if inv.remaining is none %}{{ t('invite.used_unlimited', used=inv.used) }}{% else %}{{ t('invite.used', used=inv.used, max=inv.max_addresses) }}{% endif %}</span>
+            <form method="post" action="/invites/{{ inv.id }}/revoke" data-confirm="{{ t('invite.revoke_confirm', name=inv.name) }}">
+              <input type="hidden" name="_csrf" value="{{ csrf }}">
+              <button type="submit" class="chip">{{ t('invite.revoke') }}</button>
+            </form>
+          </div>
+          {% if row.addresses %}
+          <ul class="invite-addresses">
+            {% for a in row.addresses %}<li><span class="mono">{{ a.network }}</span> <span class="micro">{{ t('invite.redeemed_at', date=a.last_at | dt) }}</span></li>{% endfor %}
+          </ul>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </details>
+
     {% if history %}
     <div class="card history">
       <p class="eyebrow">{{ t('history.eyebrow') }}</p>

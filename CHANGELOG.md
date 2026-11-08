@@ -7,6 +7,17 @@ All notable changes to bunkerweb-whitelister. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-08
+
+### Added
+- **Invitations**: shareable links for people whose address you do not know. A link carries a
+  name, the access period per address, its own validity and a budget of distinct addresses
+  (IPv6 per /64). The recipient opens it and presses one button; opening it again from a known
+  address only restarts that address's period. Links are shown once (only a hash is stored),
+  can be revoked, are throttled against guessing, and GET never changes anything. New card
+  **Invitations** on the page, redemptions in the history, `PUBLIC_URL` for the link origin.
+  The redeem path `/i/<token>` must be reachable without a login (see README).
+
 ## [0.3.0] - 2026-10-30
 
 ### Added
@@ -79,7 +90,8 @@ First release.
 - Security audit (Cloudflare security-audit skill, standard profile) with all confirmed findings
   fixed; reports under `docs/security-audit/run-1/`.
 
-[Unreleased]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.1.1...v0.1.2

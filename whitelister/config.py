@@ -113,6 +113,7 @@ class Settings:
     trusted_proxies: tuple[IPNetwork, ...]
     client_ip_header: str
     cookie_secure: bool
+    public_url: str | None  # absolute origin for links sent to other people; derived from the request when unset
     hsts: bool
 
     # Who may fetch the plain list
@@ -174,6 +175,9 @@ def load_settings(env_data_dir: str | None = None) -> Settings:
     else:
         session_secret, generated = _load_or_create_secret(data_dir / "session.key")
 
+    public_url = (_read("PUBLIC_URL") or "").rstrip("/") or None
+    if public_url and not public_url.startswith(("http://", "https://")):
+        raise ConfigError("PUBLIC_URL must start with http:// or https://")
     bw_api_url = _read("BW_API_URL")
     if bw_api_url:
         bw_api_url = bw_api_url.rstrip("/")
@@ -219,6 +223,7 @@ def load_settings(env_data_dir: str | None = None) -> Settings:
         trusted_proxies=trusted_proxies,
         client_ip_header=client_ip_header,
         cookie_secure=_bool("COOKIE_SECURE", True),
+        public_url=public_url,
         hsts=_bool("HSTS", False),
         list_allowed_networks=_networks("LIST_ALLOWED_NETWORKS", PRIVATE_NETWORKS),
         list_token=list_token,

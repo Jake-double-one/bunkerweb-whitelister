@@ -142,6 +142,15 @@
     render();
   }
 
+  /* Copy a freshly made invitation link */
+  document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
+    const src = b.parentElement.querySelector('[data-copy-source]');
+    if (!src) return;
+    src.select();
+    try { await navigator.clipboard.writeText(src.value); b.classList.add('on'); setTimeout(() => b.classList.remove('on'), 1200); }
+    catch (e) { document.execCommand && document.execCommand('copy'); }
+  }));
+
   /* Ask before removing */
   document.querySelectorAll('form[data-confirm]').forEach((form) => {
     form.addEventListener('submit', (ev) => {

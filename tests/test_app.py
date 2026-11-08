@@ -856,3 +856,152 @@ def test_export_and_import_round_trip(make_client, fake_bw):
             assert "expired" in (await c.get("/")).text or store.count() == 2
 
     asyncio.run(run())
+
+
+# --- invitations: a link that lets someone put their own address on the list -----------------
+
+
+def _guest(app, ip: str):
+    """A visitor who is not logged in, arriving through the trusted proxy from ``ip``."""
+    transport = httpx.ASGITransport(app=app, client=("10.0.0.5", 40000))
+    return httpx.AsyncClient(transport=transport, base_url="http://wl.example", headers={"X-Forwarded-For": ip, "Host": "wl.example"})
+
+
+async def _make_invite(c, csrf, **form):
+    data = {"name": "Tax advisor", "access_days": "14", "link_days": "14", "max_addresses": "3", "_csrf": csrf, **form}
+    r = await c.post("/invites", data=data)
+    assert r.status_code == 303, r.text
+    page = (await c.get("/")).text
+    m = re.search(r'data-copy-source aria-label="[^"]*" value="([^"]+)"|value="(https?://[^"]+/i/[^"]+)"', page)
+    assert m, "link not shown"
+    url = m.group(1) or m.group(2)
+    return url, page
+
+
+def test_invite_is_created_once_shown_and_redeemed_by_a_guest(make_client, fake_bw):
+    app, store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            csrf = _csrf((await c.get("/")).text)
+            url, page = await _make_invite(c, csrf)
+            assert url.startswith("http://wl.example/i/") or url.startswith("http://t/i/")
+            token = url.rsplit("/", 1)[1]
+            assert len(token) >= 30
+            assert "Copy it now" in page
+            assert token not in json.dumps([dict(r) for r in store._conn.execute("SELECT * FROM invites")])  # only the hash is stored
+            page = (await c.get("/")).text
+            assert "Copy it now" not in page  # shown exactly once
+            assert "0 of 3 addresses used" in page
+        # the guest opens the link: a GET changes nothing (mail scanners fetch links)
+        async with _guest(app, "198.51.100.77") as g:
+            r = await g.get(f"/i/{token}")
+            assert r.status_code == 200 and "Unlock my access" in r.text and "3 more addresses" in r.text
+            assert store.count() == 0
+            r = await g.post(f"/i/{token}", headers={"Origin": "http://wl.example", "Sec-Fetch-Site": "same-origin"})
+            assert r.status_code == 200 and "valid until" in r.text and "2 more addresses" in r.text
+            entry = store.find("198.51.100.77")
+            assert entry is not None and entry.label == "Tax advisor" and entry.created_by == "invite:Tax advisor"
+            assert timedelta(days=13, hours=23) < entry.expires_at - datetime.now(UTC) <= timedelta(days=14)
+            assert ("DELETE", "/cache/global/whitelist/whitelist-download/" + cache_file_name(_settings.whitelist_url)) in fake_bw.calls
+            # a second click from the same address refreshes, but does not consume the budget
+            store.set_expiry(entry.id, datetime.now(UTC) + timedelta(days=1))
+            r = await g.get(f"/i/{token}")
+            assert "already unlocked" in r.text and "Renew my access" in r.text
+            r = await g.post(f"/i/{token}", headers={"Origin": "http://wl.example", "Sec-Fetch-Site": "same-origin"})
+            assert "2 more addresses" in r.text
+            assert store.find("198.51.100.77").expires_at - datetime.now(UTC) > timedelta(days=13)
+        async with await _proxied(app) as c:
+            await login(c)
+            page = (await c.get("/")).text
+            assert "1 of 3 addresses used" in page and "198.51.100.77" in page
+            assert "198.51.100.77 unlocked via link · Tax advisor" in page
+            assert "198.51.100.77 renewed via link · Tax advisor" in page
+
+    asyncio.run(run())
+
+
+def test_invite_budget_counts_addresses_with_ipv6_per_64(make_client, fake_bw):
+    app, store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            csrf = _csrf((await c.get("/")).text)
+            url, _ = await _make_invite(c, csrf, max_addresses="2")
+            token = url.rsplit("/", 1)[1]
+        hdr = {"Origin": "http://wl.example", "Sec-Fetch-Site": "same-origin"}
+        async with _guest(app, "2001:db8:1:2:aaaa::1") as g:
+            assert (await g.post(f"/i/{token}", headers=hdr)).status_code == 200
+        async with _guest(app, "2001:db8:1:2:bbbb::9") as g:  # same /64: the same address for the budget
+            r = await g.post(f"/i/{token}", headers=hdr)
+            assert r.status_code == 200 and "1 more address" in r.text
+        assert store.find("2001:db8:1:2::/64") is not None
+        async with _guest(app, "198.51.100.1") as g:
+            r = await g.post(f"/i/{token}", headers=hdr)
+            assert r.status_code == 200 and "0 more addresses" in r.text
+        async with _guest(app, "198.51.100.2") as g:
+            r = await g.get(f"/i/{token}")
+            assert r.status_code == 200 and "used up its addresses" in r.text
+            r = await g.post(f"/i/{token}", headers=hdr)
+            assert r.status_code == 409 and store.find("198.51.100.2") is None
+        async with _guest(app, "198.51.100.1") as g:  # a known address still works after exhaustion
+            assert "valid until" in (await g.post(f"/i/{token}", headers=hdr)).text
+
+    asyncio.run(run())
+
+
+def test_invite_closed_links_and_guessing(make_client, fake_bw):
+    app, store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            csrf = _csrf((await c.get("/")).text)
+            url, _ = await _make_invite(c, csrf)
+            token = url.rsplit("/", 1)[1]
+            # revoke
+            page = (await c.get("/")).text
+            invite_id = re.search(r'action="/invites/(\d+)/revoke"', page).group(1)
+            await c.post(f"/invites/{invite_id}/revoke", data={"_csrf": csrf})
+            assert "Link revoked · Tax advisor" in (await c.get("/")).text
+        hdr = {"Origin": "http://wl.example", "Sec-Fetch-Site": "same-origin"}
+        async with _guest(app, "198.51.100.5") as g:
+            r = await g.get(f"/i/{token}")
+            assert r.status_code == 404 and "no longer valid" in r.text
+            assert (await g.post(f"/i/{token}", headers=hdr)).status_code == 404
+            assert store.count() == 0
+            # unknown tokens are throttled like wrong passwords
+            codes = []
+            for i in range(12):
+                codes.append((await g.get(f"/i/{'x' * 32}{i:02d}")).status_code)
+            assert 429 in codes
+        # an expired link
+        async with await _proxied(app) as c:
+            await login(c)
+            csrf = _csrf((await c.get("/")).text)
+            url, _ = await _make_invite(c, csrf, link_days="7")
+            token2 = url.rsplit("/", 1)[1]
+        store._conn.execute("UPDATE invites SET valid_until = '2020-01-01T00:00:00'")
+        async with _guest(app, "198.51.100.6") as g:
+            assert (await g.post(f"/i/{token2}", headers=hdr)).status_code == 404
+        # creating needs a session and a CSRF token
+        async with _guest(app, "198.51.100.7") as g:
+            r = await g.post("/invites", data={"name": "x", "access_days": "14", "link_days": "14", "max_addresses": "3"})
+            assert r.status_code == 303 and r.headers["location"] == "/login"
+
+    asyncio.run(run())
+
+
+def test_invite_link_uses_public_url_when_configured(make_client, fake_bw):
+    app, _store, _settings = make_client(PUBLIC_URL="https://whitelist.example.org/")
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            csrf = _csrf((await c.get("/")).text)
+            url, _ = await _make_invite(c, csrf)
+            assert url.startswith("https://whitelist.example.org/i/")
+
+    asyncio.run(run())

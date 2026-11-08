@@ -214,6 +214,7 @@ class Syncer:
                 last_tick = now
                 for entry in self.store.purge_expired(now - timedelta(days=self.settings.expired_retention_days)):
                     log.info("expired entry removed: %s (%s)", entry.network, entry.label)
+                self.store.invites_purge(now - timedelta(days=30))
             except Exception:
                 # a storage fault must not end the loop: the next tick retries the same window
                 log.exception("background tick failed; retrying on the next tick")

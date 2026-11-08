@@ -160,6 +160,7 @@ All variables may be given as `NAME_FILE` (path to a secret) instead.
 | `EXPIRED_RETENTION_DAYS` | `7` | How long expired entries stay listed before deletion |
 | `MIN_PREFIX_V4` / `MIN_PREFIX_V6` | `16` / `48` | Widest allowed network |
 | `ALLOW_PRIVATE` | `yes` | Allow RFC 1918 / ULA entries |
+| `PUBLIC_URL` | from the request | Origin used in invitation links, e.g. `https://whitelist.example.org` |
 | `BW_API_URL` | | e.g. `http://bw-api:8888`; unset = no API, list only |
 | `BW_API_USERNAME` / `BW_API_PASSWORD` | | API user; exchanged at `POST /auth` for a Biscuit token that is renewed on 401. Works for non-admin ACL users. Or: |
 | `BW_API_TOKEN` | | Bearer token (`API_TOKEN`, break-glass only) |
@@ -205,6 +206,34 @@ missing keys fall back to English. Plurals use `key.one` / `key.other`.
   that are already over are skipped, policy violations stop the import before anything is
   written). Import bodies may be up to 256 KB.
 
+## Invitations
+
+For someone whose address you do not know and who should not need to know anything about
+IP addresses: create a link under **Invitations** and send it to them.
+
+- **Name** labels every address the link adds (for example "Tax advisor").
+- **Access per address** is how long each redeemed address stays on the list.
+- **Link can be used for** limits the link itself; afterwards it is dead whatever is left.
+- **Addresses** is the budget of distinct addresses the link may add (IPv6 counts per /64,
+  so a rotating privacy address does not eat the budget). Opening the link again from a known
+  address is free and only restarts that address's period. Colleagues can share one link; each
+  new address uses one slot.
+
+The person opens the link, sees a plain page ("Press the button and this connection is
+unlocked for 14 days") and presses one button. A GET never changes anything, so mail scanners
+and link previews cannot redeem a link; the button is a same-origin POST. The page shows how
+many addresses are left and until when the link can be used. Only a SHA-256 of the token is
+stored, so the link is shown exactly once; unknown tokens are throttled like wrong passwords,
+and open links can be revoked at any time. Redemptions appear in the history as
+"unlocked via link".
+
+**The redeem path must be reachable without a login.** The route is `/i/<token>`. If the
+whitelister sits behind a login proxy such as Authentik, exclude `^/i/.*` from
+authentication there. If BunkerWeb only admits whitelisted clients to the whitelister's own
+host, let everyone reach that path on that service, for example `WHITELIST_URI=^/i/` (or
+`GREYLIST_URI=^/i/` when the host is protected with a greylist). Set `PUBLIC_URL` to the
+address people reach the whitelister at, so generated links carry the right origin.
+
 ## Install as an app
 
 The page is a progressive web app: browsers offer "Install" / "Add to Home Screen" and
@@ -238,6 +267,8 @@ Re-pin dependencies to the newest releases with `scripts/compile-requirements.sh
 | `POST /logout` | session + CSRF | |
 | `GET /ips.txt` | direct requests from `LIST_ALLOWED_NETWORKS` | The list for BunkerWeb |
 | `GET /healthz` | everyone | `{"status":"ok"}`, 503 when the background loop has stopped |
+| `POST /invites`, `POST /invites/{id}/revoke` | session + CSRF | Create and revoke invitation links |
+| `GET /i/{token}`, `POST /i/{token}` | whoever has the link | Invitation page; the POST adds the visitor's address |
 | `GET /export` | session | JSON backup of all entries |
 | `POST /import` | session + CSRF | Restore entries from such a backup (≤ 256 KB) |
 | `GET /sw.js`, `GET /offline`, `GET /static/manifest.webmanifest` | everyone | Installable-app shell, holds no data |
