@@ -197,6 +197,8 @@ class EntryStore:
             )
             """
         )
+        if "removed_at" not in {r["name"] for r in self._conn.execute("PRAGMA table_info(invite_addresses)")}:
+            self._conn.execute("ALTER TABLE invite_addresses ADD COLUMN removed_at TEXT")
         self._conn.execute("PRAGMA foreign_keys=ON")
 
     def close(self) -> None:
@@ -265,10 +267,19 @@ class EntryStore:
             row = self._conn.execute("SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
         return self._row(row)
 
-    def delete(self, entry_id: int) -> bool:
+    def delete(self, entry_id: int, now: datetime | None = None) -> bool:
+        """Remove an entry. An address a link had added is remembered as removed, so the link cannot
+        bring it back for free: the operator's removal wins over the guest's "renew"."""
         with self._lock:
-            cur = self._conn.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
-            return cur.rowcount > 0
+            row = self._conn.execute("SELECT network FROM entries WHERE id = ?", (entry_id,)).fetchone()
+            if row is None:
+                return False
+            self._conn.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
+            self._conn.execute(
+                "UPDATE invite_addresses SET removed_at = ? WHERE network = ? AND removed_at IS NULL",
+                (_iso(now or datetime.now(UTC)), row["network"]),
+            )
+            return True
 
     def expired_between(self, since: datetime, until: datetime) -> list[Entry]:
         """Entries whose end lies in (since, until]: they just dropped off the list."""
@@ -385,9 +396,24 @@ class EntryStore:
     def invite_addresses(self, invite_id: int) -> list[dict[str, Any]]:
         with self._lock:
             rows = self._conn.execute(
-                "SELECT network, first_at, last_at FROM invite_addresses WHERE invite_id = ? ORDER BY first_at", (invite_id,)
+                "SELECT network, first_at, last_at, removed_at FROM invite_addresses WHERE invite_id = ? ORDER BY first_at",
+                (invite_id,),
             ).fetchall()
-        return [{"network": r["network"], "first_at": _dt(r["first_at"]), "last_at": _dt(r["last_at"])} for r in rows]
+        return [
+            {"network": r["network"], "first_at": _dt(r["first_at"]), "last_at": _dt(r["last_at"]), "removed_at": _dt(r["removed_at"])}
+            for r in rows
+        ]
+
+    def invite_address_state(self, invite_id: int, network: str) -> str | None:
+        """``None`` when the link has not seen the address, ``"known"`` when it added it, ``"removed"`` when the
+        operator has since taken that entry off the list."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT removed_at FROM invite_addresses WHERE invite_id = ? AND network = ?", (invite_id, network)
+            ).fetchone()
+        if row is None:
+            return None
+        return "removed" if row["removed_at"] else "known"
 
     def invite_touch_address(self, invite_id: int, network: str, now: datetime) -> bool:
         """Record a redemption; True when the address is new to this invite (and counts against its budget)."""

@@ -106,8 +106,12 @@ BunkerWeb side (global settings):
 
 ```
 USE_WHITELIST=yes
-WHITELIST_IP_URLS=http://whitelister:8080/ips.txt
+WHITELIST_IP_URLS=http://whitelister:8080/ips.txt?token=<LIST_TOKEN>
 ```
+
+The URL must be byte-identical to `WHITELIST_URL` in the whitelister's `.env` (including the
+`?token=` part when `LIST_TOKEN` is set), because the whitelister names BunkerWeb's cache file
+from it.
 
 API side: an API user for the whitelister (`API_ACL_BOOTSTRAP_FILE`) or the admin
 credentials, and `API_WHITELIST_IPS` covering the whitelister's network. The whitelister
@@ -217,8 +221,13 @@ IP addresses: create a link under **Invitations** and send it to them.
 - **Link can be used for** limits the link itself; afterwards it is dead whatever is left.
 - **Addresses** is the budget of distinct addresses the link may add (IPv6 counts per /64,
   so a rotating privacy address does not eat the budget). Opening the link again from a known
-  address is free and only restarts that address's period. Colleagues can share one link; each
-  new address uses one slot.
+  address is free and only restarts that address's period (a renewal that would gain less than
+  an hour changes nothing). Colleagues can share one link; each new address uses one slot.
+
+A link only ever adds. An address you listed yourself keeps its label, origin and period (a
+permanent entry stays permanent); the link can only lengthen it. If you remove an address the
+link had added, the link remembers that: the slot stays spent and the page tells the person
+that the address was removed, instead of quietly putting it back.
 
 The person opens the link, sees a plain page ("Press the button and this connection is
 unlocked for 14 days") and presses one button. The confirmation then runs a purely visual

@@ -139,13 +139,15 @@ class LoginThrottle:
     Failures are forgotten after an hour without new ones. A process-wide
     budget (``global_budget`` failures per minute, from all clients
     together) locks the login for everyone for a minute: a distributed
-    guessing run then costs attempts, not CPU."""
+    guessing run then costs attempts, not CPU. ``global_budget=None`` keeps
+    only the per-client part (for tokens that cannot be guessed anyway, where
+    a shared lock would only let strangers lock legitimate holders out)."""
 
     MAX_LOCK = 3600
     DECAY = 3600
     MAX_TRACKED = 10_000
 
-    def __init__(self, max_failures: int, lock_seconds: int, global_budget: int = 30) -> None:
+    def __init__(self, max_failures: int, lock_seconds: int, global_budget: int | None = 30) -> None:
         self.max_failures = max_failures
         self.lock_seconds = lock_seconds
         self.global_budget = global_budget
@@ -184,7 +186,7 @@ class LoginThrottle:
             if now - self._window_start > 60:
                 self._window_start, self._window_failures = now, 0
             self._window_failures += 1
-            if self._window_failures > self.global_budget:
+            if self.global_budget is not None and self._window_failures > self.global_budget:
                 self._global_until = max(self._global_until, now + 60)
                 lock = max(lock, 60.0)
             return int(lock)

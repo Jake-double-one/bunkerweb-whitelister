@@ -7,6 +7,35 @@ All notable changes to bunkerweb-whitelister. The format follows
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-11-08
+
+Follow-up to the second security audit (`docs/security-audit/run-2/`, run on 0.4.2). All five
+confirmed findings were rated low; all are fixed here with regression tests.
+
+### Fixed
+- A redeemed invitation never shortens, relabels or re-attributes an entry the operator made:
+  an existing entry for the guest's network is left alone (permanent or longer periods stay,
+  the operator's label and origin stay) and is only lengthened when the link's period ends
+  later. The guest page says "already unlocked" for such addresses.
+- Renewing from a known address is a no-op unless it gains at least an hour; a no-op writes no
+  history row and does not ask BunkerWeb to refresh, so a guest can no longer flood the history
+  or the BunkerWeb API by pressing the button repeatedly.
+- Removing an invite-added entry on the operator page now sticks: the link remembers the
+  address as removed, the guest page says so, the slot stays spent and the button refuses
+  (HTTP 409) instead of quietly re-adding the address as a "renewal".
+- Unknown invitation tokens are still throttled per address, but no longer share a process-wide
+  budget: a handful of strangers guessing tokens could lock every legitimate link holder out
+  for a minute. A 192-bit token cannot be guessed, so the per-address lock is enough.
+- A prefill link with a label over 64 characters or a `days` value made of non-ASCII digits
+  (`²`) crashed the index page with a bare 500 without the security headers; such values are now
+  dropped and the form renders. An over-long invitation name turns into a flash message instead
+  of a 500.
+
+### Changed
+- `docker-compose.example.yml` was already correct; the README quick start now shows the same
+  `WHITELIST_IP_URLS` with `?token=` so that following it with the example `.env` does not make
+  every BunkerWeb fetch a 403.
+
 ## [0.4.2] - 2026-11-08
 
 ### Added
@@ -129,6 +158,7 @@ First release.
   fixed; reports under `docs/security-audit/run-1/`.
 
 [Unreleased]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.2...HEAD
+[0.4.3]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.3.0...v0.4.1
 [0.3.0]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.2.0...v0.3.0

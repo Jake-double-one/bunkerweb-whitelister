@@ -67,6 +67,7 @@ INVITE_LINK_DAYS = (7, 14, 30)  # how long a link can be redeemed
 INVITE_ADDRESS_CHOICES = (1, 3, 5, 10, 0)  # 0 = unlimited
 INVITE_KEEP_DAYS = 30  # closed links stay visible in the store this long for the history, then go
 QUICK_EXTEND_DAYS = 7
+INVITE_RENEWAL_GAIN = timedelta(hours=1)  # a renewal must gain at least this, else it is a no-op (no refresh, no event)
 LIST_FETCHED_KEY = "list_fetched_at"
 
 
@@ -116,7 +117,9 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
     flash_codec = URLSafeTimedSerializer(settings.session_secret, salt="whitelister.flash")
     checker = PasswordChecker(settings.password, settings.password_hash)
     throttle = LoginThrottle(settings.login_max_failures, settings.login_lock_seconds)
-    invite_throttle = LoginThrottle(settings.login_max_failures, settings.login_lock_seconds)  # unknown tokens cost like wrong passwords
+    # unknown tokens cost like wrong passwords per address, but there is no shared budget: a 192-bit token
+    # cannot be guessed, and a shared lock would only let a handful of strangers lock every guest out
+    invite_throttle = LoginThrottle(settings.login_max_failures, settings.login_lock_seconds, global_budget=None)
     hash_slots = asyncio.Semaphore(2)  # password checks run in a thread, at most two at a time
     cookie_name = "__Host-wl_session" if settings.cookie_secure else "wl_session"
     flash_cookie = "__Host-wl_flash" if settings.cookie_secure else "wl_flash"
@@ -262,9 +265,14 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         except ValidationError:
             network = ip or ""
         days = None
-        if q.get("days", "").isdigit() and int(q["days"]) in settings.duration_presets:
-            days = int(q["days"])
-        return {"network": network, "days": days, "label": normalize_label(q.get("label", ""))}
+        raw_days = q.get("days", "")
+        if raw_days.isascii() and raw_days.isdecimal() and int(raw_days) in settings.duration_presets:
+            days = int(raw_days)
+        try:
+            label = normalize_label(q.get("label", ""))
+        except ValidationError:
+            label = ""  # an over-long label in a link is dropped; the page still renders
+        return {"network": network, "days": days, "label": label}
 
     def public_origin(request: Request) -> str:
         if settings.public_url:
@@ -632,7 +640,10 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         if isinstance(session, Response):
             return session
         now = datetime.now(UTC)
-        clean_name = normalize_label(name)
+        try:
+            clean_name = normalize_label(name)
+        except ValidationError as exc:
+            return redirect_with_flash("/", "alert", t(exc.key, **exc.params))
         if not clean_name:
             return redirect_with_flash("/", "alert", t("invite.name_missing"))
         try:
@@ -713,12 +724,15 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         now = datetime.now(UTC)
         ip, _ = client_ip(request)
         net = redeemer_network(ip)
-        known = net is not None and any(a["network"] == net for a in store.invite_addresses(invite.id))
         if net is None:
             return invite_view(request, invite, now, "no_address")
+        seen = store.invite_address_state(invite.id, net)
+        if seen == "removed":
+            return invite_view(request, invite, now, "removed")
+        existing = store.find(net)
+        known = seen == "known" or existing is not None
         if not known and invite.remaining == 0:
             return invite_view(request, invite, now, "exhausted")
-        existing = store.find(net) if known else None
         return invite_view(request, invite, now, "known" if known else "ready", until=existing.expires_at if existing else None)
 
     @app.post("/i/{token}", response_class=HTMLResponse, include_in_schema=False)
@@ -733,20 +747,44 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         net = redeemer_network(ip)
         if net is None:
             return invite_view(request, invite, now, "no_address", status_code=400)
-        known = any(a["network"] == net for a in store.invite_addresses(invite.id))
+        seen = store.invite_address_state(invite.id, net)
+        if seen == "removed":
+            return invite_view(request, invite, now, "removed", status_code=409)
+        existing = store.find(net)
+        known = seen == "known" or existing is not None
         if not known and invite.remaining == 0:
             return invite_view(request, invite, now, "exhausted", status_code=409)
         expires = now + timedelta(days=invite.access_days)
+        # A link only ever adds: an entry the operator made (another label, a longer or permanent period)
+        # is left as it is, and a renewal that would gain less than an hour changes nothing at all.
+        changed = False
         try:
-            entry = store.upsert(net, invite.name, expires, now, created_by=f"invite:{invite.name}")
-        except ValidationError as exc:
-            return redirect_with_flash("/", "alert", t(exc.key, **exc.params))
+            if existing is None:
+                entry = store.upsert(net, invite.name, expires, now, created_by=f"invite:{invite.name}")
+                changed = True
+            elif existing.expires_at is not None and existing.expires_at + INVITE_RENEWAL_GAIN <= expires:
+                entry = store.set_expiry(existing.id, expires, now) or existing
+                changed = True
+            else:
+                entry = existing
+        except ValidationError:
+            return invite_view(request, invite, now, "no_address", status_code=400)
         is_new = store.invite_touch_address(invite.id, net, now)
-        audit_event(request, "invite.redeem", invite=invite.id, name=invite.name, network=net, new_address=is_new, expires_at=_iso(expires))
-        store.event_add("invite_redeem" if is_new else "invite_refresh", net, invite.name, ip or "", now)
-        sync_error = await refresh_after_change(request)
-        if sync_error:
-            log.warning("invite redeemed but BunkerWeb refresh failed: %s", sync_error)
+        audit_event(
+            request,
+            "invite.redeem",
+            invite=invite.id,
+            name=invite.name,
+            network=net,
+            new_address=is_new,
+            changed=changed,
+            expires_at=_iso(entry.expires_at),
+        )
+        if changed:
+            store.event_add("invite_redeem" if is_new else "invite_refresh", net, invite.name, ip or "", now)
+            sync_error = await refresh_after_change(request)
+            if sync_error:
+                log.warning("invite redeemed but BunkerWeb refresh failed: %s", sync_error)
         invite = store.invite_get(invite.id) or invite
         return invite_view(request, invite, now, "done", until=entry.expires_at)
 

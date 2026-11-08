@@ -34,6 +34,10 @@
       <p class="lead">{{ t('invite.no_address') }}</p>
     {% elif state == 'exhausted' %}
       <p class="lead">{{ t('invite.exhausted') }}</p>
+    {% elif state == 'removed' %}
+      <p class="lead">{{ t('invite.removed') }}</p>
+    {% elif state == 'done' and until is none %}
+      <p class="lead">{{ t('invite.done_forever') }}</p>
     {% elif state == 'done' %}
       <p class="lead">{{ t('invite.done', until=until | dt) }}</p>
       {% if wait_seconds %}
@@ -53,7 +57,9 @@
       <p class="note">{{ t('invite.done_note') }}</p>
       {% endif %}
     {% else %}
-      {% if state == 'known' %}
+      {% if state == 'known' and until is none %}
+      <p class="lead">{{ t('invite.known_forever') }}</p>
+      {% elif state == 'known' %}
       <p class="lead">{{ t('invite.known', until=until | dt) }}</p>
       {% else %}
       <p class="lead">{{ t('invite.ready', days=t.plural('add.day', invite.access_days)) }}</p>

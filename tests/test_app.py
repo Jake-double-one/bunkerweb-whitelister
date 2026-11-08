@@ -1074,3 +1074,145 @@ def test_invite_link_uses_public_url_when_configured(make_client, fake_bw):
             assert url.startswith("https://whitelist.example.org/i/")
 
     asyncio.run(run())
+
+
+# --- audit run-2 follow-ups: a link only adds, never takes, and cannot be locked by strangers ---
+
+HDR = {"Origin": "http://wl.example", "Sec-Fetch-Site": "same-origin"}
+
+
+def test_invite_redemption_never_shortens_or_relabels_an_operator_entry(make_client, fake_bw):
+    app, store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            csrf = _csrf((await c.get("/")).text)
+            await c.post("/entries", data={"network": "198.51.100.77", "label": "Office NAT", "duration": "forever", "_csrf": csrf})
+            await c.post("/entries", data={"network": "198.51.100.78", "label": "Branch", "duration": "1", "_csrf": csrf})
+            url, _ = await _make_invite(c, csrf)
+            token = url.rsplit("/", 1)[1]
+        permanent = store.find("198.51.100.77")
+        short = store.find("198.51.100.78")
+        calls_before = len(fake_bw.calls)
+        async with _guest(app, "198.51.100.77") as g:
+            r = await g.get(f"/i/{token}")
+            assert r.status_code == 200 and "already unlocked permanently" in r.text
+            r = await g.post(f"/i/{token}", headers=HDR)
+            assert r.status_code == 200 and "is permanent" in r.text
+        after = store.find("198.51.100.77")
+        assert after.expires_at is None and after.label == "Office NAT" and after.created_by == permanent.created_by
+        assert len(fake_bw.calls) == calls_before  # nothing changed, so BunkerWeb was not bothered
+        async with _guest(app, "198.51.100.78") as g:
+            r = await g.post(f"/i/{token}", headers=HDR)
+            assert r.status_code == 200
+        after = store.find("198.51.100.78")
+        assert after.label == "Branch" and after.created_by == short.created_by  # the link only lengthened the period
+        assert after.expires_at - datetime.now(UTC) > timedelta(days=13)
+        assert len(fake_bw.calls) > calls_before
+        async with await _proxied(app) as c:
+            await login(c)
+            page = (await c.get("/")).text
+            assert "2 of 3 addresses used" in page
+
+    asyncio.run(run())
+
+
+def test_invite_renewal_that_gains_nothing_has_no_side_effects(make_client, fake_bw):
+    app, store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            csrf = _csrf((await c.get("/")).text)
+            url, _ = await _make_invite(c, csrf)
+            token = url.rsplit("/", 1)[1]
+        async with _guest(app, "198.51.100.77") as g:
+            assert (await g.post(f"/i/{token}", headers=HDR)).status_code == 200
+            deletes = len(fake_bw.calls)
+            events = len(store.events_recent(20))
+            for _ in range(5):  # hammering the button right after redeeming changes nothing
+                assert (await g.post(f"/i/{token}", headers=HDR)).status_code == 200
+            assert len(fake_bw.calls) == deletes and len(store.events_recent(20)) == events
+            entry = store.find("198.51.100.77")
+            store.set_expiry(entry.id, datetime.now(UTC) + timedelta(days=2))  # now a renewal gains something
+            assert (await g.post(f"/i/{token}", headers=HDR)).status_code == 200
+            assert len(fake_bw.calls) > deletes and len(store.events_recent(20)) == events + 1
+            assert store.find("198.51.100.77").expires_at - datetime.now(UTC) > timedelta(days=13)
+
+    asyncio.run(run())
+
+
+def test_removed_invite_address_cannot_readd_itself(make_client, fake_bw):
+    app, store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            csrf = _csrf((await c.get("/")).text)
+            url, _ = await _make_invite(c, csrf, max_addresses="1")
+            token = url.rsplit("/", 1)[1]
+        async with _guest(app, "198.51.100.77") as g:
+            assert (await g.post(f"/i/{token}", headers=HDR)).status_code == 200
+        entry = store.find("198.51.100.77")
+        async with await _proxied(app) as c:
+            await login(c)
+            csrf = _csrf((await c.get("/")).text)
+            r = await c.post(f"/entries/{entry.id}/delete", data={"_csrf": csrf})
+            assert r.status_code == 303
+            page = (await c.get("/")).text
+            assert "1 of 1 addresses used" in page and "removed" in page  # the slot stays spent
+        async with _guest(app, "198.51.100.77") as g:
+            r = await g.get(f"/i/{token}")
+            assert r.status_code == 200 and "removed from the list" in r.text and "Unlock my access" not in r.text
+            r = await g.post(f"/i/{token}", headers=HDR)
+            assert r.status_code == 409 and store.find("198.51.100.77") is None
+        async with _guest(app, "198.51.100.78") as g:  # and the budget is still exhausted for newcomers
+            assert (await g.post(f"/i/{token}", headers=HDR)).status_code == 409
+
+    asyncio.run(run())
+
+
+def test_unknown_invite_tokens_from_many_addresses_do_not_lock_real_guests_out(make_client, fake_bw):
+    app, _store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            csrf = _csrf((await c.get("/")).text)
+            url, _ = await _make_invite(c, csrf)
+            token = url.rsplit("/", 1)[1]
+        for i in range(12):  # 36 failures from 12 addresses within a minute
+            async with _guest(app, f"203.0.113.{i + 1}") as g:
+                for _ in range(3):
+                    assert (await g.get(f"/i/{'x' * 32}")).status_code == 404
+            async with _guest(app, f"203.0.113.{i + 1}") as g:
+                assert (await g.get(f"/i/{'x' * 32}")).status_code == 429  # the guesser itself is locked
+        async with _guest(app, "198.51.100.77") as g:  # an untouched holder is not
+            r = await g.get(f"/i/{token}")
+            assert r.status_code == 200 and "Unlock my access" in r.text
+            assert (await g.post(f"/i/{token}", headers=HDR)).status_code == 200
+
+    asyncio.run(run())
+
+
+def test_prefill_and_invite_name_with_bad_values_do_not_crash(make_client, fake_bw):
+    app, store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            r = await c.get("/?add=me&label=" + "a" * 65)
+            assert r.status_code == 200 and "Content-Security-Policy" in r.headers and 'value="203.0.113.9"' in r.text
+            r = await c.get("/?add=me&days=%C2%B2")  # U+00B2 passes str.isdigit() but not int()
+            assert r.status_code == 200 and "Content-Security-Policy" in r.headers
+            r = await c.get("/?add=me&days=%D9%A7")  # a non-ASCII decimal digit is not a preset either
+            assert r.status_code == 200 and 'id="dur-7" value="7" checked' not in r.text
+            csrf = _csrf((await c.get("/")).text)
+            form = {"name": "n" * 65, "access_days": "14", "link_days": "14", "max_addresses": "3", "_csrf": csrf}
+            r = await c.post("/invites", data=form)
+            assert r.status_code == 303 and store.invites_open(datetime.now(UTC)) == []
+            assert "64" in (await c.get("/")).text  # the flash names the limit
+            assert store.count() == 0
+
+    asyncio.run(run())

@@ -224,7 +224,7 @@
           </div>
           {% if row.addresses %}
           <ul class="invite-addresses">
-            {% for a in row.addresses %}<li><span class="mono">{{ a.network }}</span> <span class="micro">{{ t('invite.redeemed_at', date=a.last_at | dt) }}</span></li>{% endfor %}
+            {% for a in row.addresses %}<li><span class="mono">{{ a.network }}</span> <span class="micro">{% if a.removed_at %}{{ t('invite.removed_at', date=a.removed_at | dt) }}{% else %}{{ t('invite.redeemed_at', date=a.last_at | dt) }}{% endif %}</span></li>{% endfor %}
           </ul>
           {% endif %}
         </li>
