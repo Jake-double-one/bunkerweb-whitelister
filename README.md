@@ -161,6 +161,7 @@ All variables may be given as `NAME_FILE` (path to a secret) instead.
 | `MIN_PREFIX_V4` / `MIN_PREFIX_V6` | `16` / `48` | Widest allowed network |
 | `ALLOW_PRIVATE` | `yes` | Allow RFC 1918 / ULA entries |
 | `PUBLIC_URL` | from the request | Origin used in invitation links, e.g. `https://whitelist.example.org` |
+| `INVITE_WAIT_SECONDS` | `60` | Countdown shown after a link is redeemed, while BunkerWeb picks the list up; `0` = none |
 | `BW_API_URL` | | e.g. `http://bw-api:8888`; unset = no API, list only |
 | `BW_API_USERNAME` / `BW_API_PASSWORD` | | API user; exchanged at `POST /auth` for a Biscuit token that is renewed on 401. Works for non-admin ACL users. Or: |
 | `BW_API_TOKEN` | | Bearer token (`API_TOKEN`, break-glass only) |
@@ -220,7 +221,10 @@ IP addresses: create a link under **Invitations** and send it to them.
   new address uses one slot.
 
 The person opens the link, sees a plain page ("Press the button and this connection is
-unlocked for 14 days") and presses one button. A GET never changes anything, so mail scanners
+unlocked for 14 days") and presses one button. The confirmation then runs a purely visual
+countdown (`INVITE_WAIT_SECONDS`, default 60) so they do not rush to the protected site before
+BunkerWeb has picked the change up; links pasted into messengers show a title with the link's
+name and a preview card. A GET never changes anything, so mail scanners
 and link previews cannot redeem a link; the button is a same-origin POST. The page shows how
 many addresses are left and until when the link can be used. Only a SHA-256 of the token is
 stored, so the link is shown exactly once; unknown tokens are throttled like wrong passwords,

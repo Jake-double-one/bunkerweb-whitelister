@@ -174,5 +174,11 @@
   "history.invite_redeem": "{network} per Link freigeschaltet{label}",
   "history.invite_refresh": "{network} per Link erneuert{label}",
   "invite.og_title": "Einladung zur Freischaltung: {name}",
-  "invite.og_description": "Ein Klick schaltet diese Verbindung frei. Kein Passwort, nichts zu installieren."
+  "invite.og_description": "Ein Klick schaltet diese Verbindung frei. Kein Passwort, nichts zu installieren.",
+  "invite.wait_text": "Bitte bleiben Sie für die angezeigte Zeit auf dieser Seite, bevor Sie etwas anderes öffnen.",
+  "invite.wait_done": "Fertig. Jetzt können Sie loslegen.",
+  "invite.wait_title": "Ihr Zugang wird gerade freigeschaltet.",
+  "invite.wait_step1": "Adresse eingetragen",
+  "invite.wait_step2": "Gateway übernimmt die neue Liste",
+  "invite.wait_step3": "Gleich geschafft"
 }

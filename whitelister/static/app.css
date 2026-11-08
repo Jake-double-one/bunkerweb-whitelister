@@ -221,3 +221,32 @@ details.invites .note { margin: 10px 0 12px; }
 .invite-card .lead { margin: 0 0 14px; }
 .invite-card form { margin: 6px 0 10px; }
 .invite-meta { display: block; margin-top: 8px; }
+
+/* --- invitation: purely visual countdown after a redemption (no script on that page) */
+@property --t { syntax: "<integer>"; inherits: false; initial-value: 0; }
+.wait { margin-top: 16px; }
+.wait-text { margin: 0 0 10px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.wait-count { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 1.15rem; color: var(--ink); --t: var(--wait-n); counter-reset: t var(--t); animation: wait-count var(--wait) linear forwards; }
+.wait-count::after { content: counter(t) " s"; }
+@keyframes wait-count { from { --t: var(--wait-n); } to { --t: 0; } }
+.wait-track { position: relative; height: 8px; border-radius: 999px; overflow: hidden; background: var(--surface-2); border: 1px solid var(--line); }
+.wait-fill { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--dusk), var(--sun)); animation: wait-drain var(--wait) linear forwards; }
+@keyframes wait-drain { from { width: 100%; } to { width: 0; } }
+.wait-steps { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: .92rem; }
+.wait-steps li { display: flex; align-items: center; gap: 10px; color: var(--muted); opacity: .45; }
+.wait-steps li::before { content: "○"; font-family: var(--mono); color: var(--muted); width: 1.2em; text-align: center; }
+.wait-steps li { animation: step-on 0s linear forwards, step-done 0s linear forwards; }
+.wait-steps li:nth-child(1) { animation-delay: 0s, calc(var(--wait) / 3); }
+.wait-steps li:nth-child(2) { animation-delay: calc(var(--wait) / 3), calc(var(--wait) * 2 / 3); }
+.wait-steps li:nth-child(3) { animation-delay: calc(var(--wait) * 2 / 3), var(--wait); }
+.wait-steps li::before { animation: inherit; animation-name: dot-on, dot-done; }
+@keyframes step-on { to { opacity: 1; color: var(--ink); } }
+@keyframes step-done { to { opacity: .8; color: var(--muted); } }
+@keyframes dot-on { to { content: "●"; color: var(--sun); } }
+@keyframes dot-done { to { content: "✓"; color: var(--sun); } }
+.wait-hint, .wait-text { animation: wait-fade 0.4s linear var(--wait) forwards; }
+.wait-hint { margin: 12px 0 0; }
+.wait-done { margin: 12px 0 0; color: var(--ink); font-weight: 600; opacity: 0; animation: wait-show 0s linear var(--wait) forwards; }
+@keyframes wait-show { to { opacity: 1; } }
+@keyframes wait-fade { to { opacity: 0; height: 0; margin: 0; overflow: hidden; } }
+@media (prefers-reduced-motion: reduce) { .wait-fill { animation-duration: 0s; width: 0; } }

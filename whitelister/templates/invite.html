@@ -36,7 +36,22 @@
       <p class="lead">{{ t('invite.exhausted') }}</p>
     {% elif state == 'done' %}
       <p class="lead">{{ t('invite.done', until=until | dt) }}</p>
+      {% if wait_seconds %}
+      <style nonce="{{ nonce }}">.wait{--wait:{{ wait_seconds }}s;--wait-n:{{ wait_seconds }}}</style>
+      <div class="wait" role="status">
+        <p class="wait-text"><strong>{{ t('invite.wait_title') }}</strong> <span class="wait-count" aria-hidden="true"></span></p>
+        <div class="wait-track" aria-hidden="true"><span class="wait-fill"></span></div>
+        <ol class="wait-steps" aria-hidden="true">
+          <li>{{ t('invite.wait_step1') }}</li>
+          <li>{{ t('invite.wait_step2') }}</li>
+          <li>{{ t('invite.wait_step3') }}</li>
+        </ol>
+        <p class="note wait-hint">{{ t('invite.wait_text') }}</p>
+        <p class="wait-done">{{ t('invite.wait_done') }}</p>
+      </div>
+      {% else %}
       <p class="note">{{ t('invite.done_note') }}</p>
+      {% endif %}
     {% else %}
       {% if state == 'known' %}
       <p class="lead">{{ t('invite.known', until=until | dt) }}</p>

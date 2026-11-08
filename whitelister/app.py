@@ -296,6 +296,7 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
             "remaining": invite.remaining if invite else None,
             "nonce": request.state.csp_nonce,
             "inline_css": inline_css,
+            "wait_seconds": settings.invite_wait_seconds if state == "done" else 0,
             "origin": public_origin(request),
             "page_url": f"{public_origin(request)}{request.url.path}",
         }

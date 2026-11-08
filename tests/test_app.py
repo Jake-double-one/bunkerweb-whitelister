@@ -1038,6 +1038,31 @@ def test_invite_page_has_a_messenger_preview(make_client, fake_bw):
     asyncio.run(run())
 
 
+def test_redeemed_page_shows_a_countdown_unless_disabled(make_client, fake_bw):
+    hdr = {"Origin": "http://wl.example", "Sec-Fetch-Site": "same-origin"}
+    for wait, expected in (("45", True), ("0", False)):
+        app, _store, _settings = make_client(INVITE_WAIT_SECONDS=wait)
+
+        async def run(app=app, expected=expected):
+            async with await _proxied(app) as c:
+                await login(c)
+                url, _ = await _make_invite(c, _csrf((await c.get("/")).text))
+                token = url.rsplit("/", 1)[1]
+            async with _guest(app, "198.51.100.9") as g:
+                before = (await g.get(f"/i/{token}")).text
+                assert 'class="wait"' not in before  # only after the button
+                r = await g.post(f"/i/{token}", headers=hdr)
+                assert r.status_code == 200
+                nonce = re.search(r"style-src 'self' 'nonce-([^']+)'", r.headers["content-security-policy"]).group(1)
+                if expected:
+                    assert f'<style nonce="{nonce}">.wait{{--wait:45s;--wait-n:45}}</style>' in r.text
+                    assert "being unlocked" in r.text and "wait-steps" in r.text and "You can go ahead now." in r.text
+                else:
+                    assert 'class="wait"' not in r.text and "It takes a moment" in r.text
+
+        asyncio.run(run())
+
+
 def test_invite_link_uses_public_url_when_configured(make_client, fake_bw):
     app, _store, _settings = make_client(PUBLIC_URL="https://whitelist.example.org/")
 

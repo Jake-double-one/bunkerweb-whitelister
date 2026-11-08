@@ -114,6 +114,7 @@ class Settings:
     client_ip_header: str
     cookie_secure: bool
     public_url: str | None  # absolute origin for links sent to other people; derived from the request when unset
+    invite_wait_seconds: int  # countdown shown after a redemption while BunkerWeb picks the list up; 0 = none
     hsts: bool
 
     # Who may fetch the plain list
@@ -224,6 +225,7 @@ def load_settings(env_data_dir: str | None = None) -> Settings:
         client_ip_header=client_ip_header,
         cookie_secure=_bool("COOKIE_SECURE", True),
         public_url=public_url,
+        invite_wait_seconds=_int("INVITE_WAIT_SECONDS", 60, minimum=0, maximum=600),
         hsts=_bool("HSTS", False),
         list_allowed_networks=_networks("LIST_ALLOWED_NETWORKS", PRIVATE_NETWORKS),
         list_token=list_token,

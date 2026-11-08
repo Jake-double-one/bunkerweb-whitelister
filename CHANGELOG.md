@@ -13,6 +13,9 @@ All notable changes to bunkerweb-whitelister. The format follows
 - Messenger previews for invitation links: the page carries Open Graph and Twitter card tags
   ("Access invitation: <name>", a short description) and a preview image served at `/i/og.png`,
   so the same exemption that admits guests admits link crawlers. The page is marked `noindex`.
+- After a link is redeemed the page runs a purely visual countdown (`INVITE_WAIT_SECONDS`,
+  default 60, CSS only) before saying "you can go ahead now", so people do not hit the protected
+  site before BunkerWeb has picked the change up.
 
 ## [0.4.1] - 2026-11-08
 
