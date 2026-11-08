@@ -7,6 +7,13 @@ All notable changes to bunkerweb-whitelister. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-08
+
+### Fixed
+- The invitation page rendered unstyled when `/static/` was not reachable for guests (login proxy
+  or whitelist in front). It now carries its stylesheet inline under the page's CSP nonce and
+  shows no skin switcher; nothing besides `/i/<token>` needs to be opened.
+
 ## [0.4.0] - 2026-11-08
 
 ### Added
@@ -90,7 +97,8 @@ First release.
 - Security audit (Cloudflare security-audit skill, standard profile) with all confirmed findings
   fixed; reports under `docs/security-audit/run-1/`.
 
-[Unreleased]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.1.2...v0.2.0

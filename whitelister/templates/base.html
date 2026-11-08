@@ -11,8 +11,10 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/icon-180.png">
 <link rel="manifest" href="/static/manifest.webmanifest">
+{% block assets %}
 <link rel="stylesheet" href="/static/app.css?v={{ version }}">
 <script src="/static/app.js?v={{ version }}" defer></script>
+{% endblock %}
 {% block head_extra %}{% endblock %}
 </head>
 <body>
@@ -20,11 +22,13 @@
   <header class="top">
     <div class="brand">{{ t('app.brand_a') }}<span>{{ t('app.brand_b') }}</span> · {{ t('app.brand_suffix') }} <span class="version">v{{ version }}</span></div>
     {% block header_status %}{% endblock %}
+    {% block header_skins %}
     <div class="skinswitch" role="radiogroup" aria-label="{{ t('skin.label') }}">
       {% for skin in skins %}
       <button type="button" role="radio" class="skin-sq" data-skin-set="{{ skin }}" aria-checked="false" aria-label="{{ t('skin.' ~ skin) }}" title="{{ t('skin.' ~ skin) }}"><span class="skin-fill" data-skin="{{ skin }}"></span></button>
       {% endfor %}
     </div>
+    {% endblock %}
     {% block header_actions %}{% endblock %}
   </header>
 

@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block title %}{{ t('invite.page_title') }} · {{ t('app.title') }}{% endblock %}
 {% block header_status %}{% endblock %}
+{# The guest reaches only this path: the stylesheet rides inside the page (CSP nonce), no script, no skin switch. #}
+{% block assets %}<style nonce="{{ nonce }}">{{ inline_css | safe }}</style>{% endblock %}
+{% block header_skins %}{% endblock %}
 
 {% block content %}
   <div class="lede">

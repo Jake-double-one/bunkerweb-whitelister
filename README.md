@@ -227,7 +227,9 @@ stored, so the link is shown exactly once; unknown tokens are throttled like wro
 and open links can be revoked at any time. Redemptions appear in the history as
 "unlocked via link".
 
-**The redeem path must be reachable without a login.** The route is `/i/<token>`. If the
+**The redeem path must be reachable without a login.** The route is `/i/<token>`; the page
+carries its stylesheet inline, so nothing under `/static/` needs to be opened for guests
+(fonts then fall back to system fonts). If the
 whitelister sits behind a login proxy such as Authentik, exclude `^/i/.*` from
 authentication there. If BunkerWeb only admits whitelisted clients to the whitelister's own
 host, let everyone reach that path on that service, for example `WHITELIST_URI=^/i/` (or

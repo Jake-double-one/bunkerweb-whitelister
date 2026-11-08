@@ -994,6 +994,26 @@ def test_invite_closed_links_and_guessing(make_client, fake_bw):
     asyncio.run(run())
 
 
+def test_invite_page_carries_its_own_styles(make_client, fake_bw):
+    """Guests usually cannot reach /static/ (login proxy, whitelist): the page must look right on its own."""
+    app, _store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            url, _ = await _make_invite(c, _csrf((await c.get("/")).text))
+            token = url.rsplit("/", 1)[1]
+        async with _guest(app, "198.51.100.9") as g:
+            for path in (f"/i/{token}", "/i/" + "x" * 32):
+                r = await g.get(path)
+                assert "/static/app.css" not in r.text and "/static/app.js" not in r.text
+                nonce = re.search(r"style-src 'self' 'nonce-([^']+)'", r.headers["content-security-policy"]).group(1)
+                assert f'<style nonce="{nonce}">' in r.text and "--mono:" in r.text
+                assert "url(/static/fonts/" in r.text and 'class="skinswitch"' not in r.text
+
+    asyncio.run(run())
+
+
 def test_invite_link_uses_public_url_when_configured(make_client, fake_bw):
     app, _store, _settings = make_client(PUBLIC_URL="https://whitelist.example.org/")
 

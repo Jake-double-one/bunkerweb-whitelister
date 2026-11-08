@@ -284,15 +284,20 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
             return None
 
     def invite_view(
-        request: Request, invite: Invite, now: datetime, state: str, until: datetime | None = None, status_code: int = 200
+        request: Request, invite: Invite | None, now: datetime, state: str, until: datetime | None = None, status_code: int = 200
     ) -> Response:
         ip, _ = client_ip(request)
-        return templates.TemplateResponse(
-            request,
-            "invite.html",
-            {"invite": invite, "state": state, "until": until, "client_ip": ip, "now": now, "remaining": invite.remaining},
-            status_code=status_code,
-        )
+        context = {
+            "invite": invite,
+            "state": state,
+            "until": until,
+            "client_ip": ip,
+            "now": now,
+            "remaining": invite.remaining if invite else None,
+            "nonce": request.state.csp_nonce,
+            "inline_css": inline_css,
+        }
+        return templates.TemplateResponse(request, "invite.html", context, status_code=status_code)
 
     def list_fetched_at() -> datetime | None:
         raw = store.meta_get(LIST_FETCHED_KEY)
@@ -380,6 +385,9 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         return JSONResponse({"status": "ok"})
 
     sw_source = (BASE_DIR / "static" / "sw.js").read_text(encoding="utf-8").replace("__VERSION__", __version__)
+    # The invitation page is the one page people reach without a login, and often without /static/ being
+    # reachable for them: it carries the stylesheet inline (fonts fall back to system fonts if blocked).
+    inline_css = (BASE_DIR / "static" / "app.css").read_text(encoding="utf-8").replace("url(fonts/", "url(/static/fonts/")
 
     @app.get("/sw.js", include_in_schema=False)
     async def service_worker() -> Response:
@@ -680,12 +688,7 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         if invite is None or not invite.is_open(datetime.now(UTC)):
             invite_throttle.record_failure(key)
             audit_event(request, "invite.unknown_or_closed")
-            return None, templates.TemplateResponse(
-                request,
-                "invite.html",
-                {"invite": None, "state": "closed", "until": None, "client_ip": ip, "now": datetime.now(UTC), "remaining": None},
-                status_code=404,
-            )
+            return None, invite_view(request, None, datetime.now(UTC), "closed", status_code=404)
         invite_throttle.record_success(key)
         return invite, None
 
