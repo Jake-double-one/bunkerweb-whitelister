@@ -99,7 +99,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
         h["Cross-Origin-Opener-Policy"] = "same-origin"
         h["Cross-Origin-Resource-Policy"] = "same-origin"
-        if not request.url.path.startswith("/static/"):
+        if not request.url.path.startswith("/static/") and request.url.path != "/i/og.png":
             h["Cache-Control"] = "no-store"
         if self.hsts:
             h["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
@@ -296,6 +296,8 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
             "remaining": invite.remaining if invite else None,
             "nonce": request.state.csp_nonce,
             "inline_css": inline_css,
+            "origin": public_origin(request),
+            "page_url": f"{public_origin(request)}{request.url.path}",
         }
         return templates.TemplateResponse(request, "invite.html", context, status_code=status_code)
 
@@ -691,6 +693,15 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
             return None, invite_view(request, None, datetime.now(UTC), "closed", status_code=404)
         invite_throttle.record_success(key)
         return invite, None
+
+    og_image = BASE_DIR / "static" / f"og-invite-{t.language}.png"
+    if not og_image.exists():
+        og_image = BASE_DIR / "static" / "og-invite-en.png"
+
+    @app.get("/i/og.png", include_in_schema=False)
+    async def invite_preview_image() -> Response:
+        """Preview card for messengers; lives under /i/ so the same exemption that admits guests admits crawlers."""
+        return Response(og_image.read_bytes(), media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
 
     @app.get("/i/{token}", response_class=HTMLResponse, include_in_schema=False)
     async def invite_page(request: Request, token: str) -> Response:

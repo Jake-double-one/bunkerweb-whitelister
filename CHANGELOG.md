@@ -7,6 +7,13 @@ All notable changes to bunkerweb-whitelister. The format follows
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-08
+
+### Added
+- Messenger previews for invitation links: the page carries Open Graph and Twitter card tags
+  ("Access invitation: <name>", a short description) and a preview image served at `/i/og.png`,
+  so the same exemption that admits guests admits link crawlers. The page is marked `noindex`.
+
 ## [0.4.1] - 2026-11-08
 
 Supersedes 0.4.0, whose release was withdrawn: its invitation page rendered unstyled behind
@@ -118,7 +125,8 @@ First release.
 - Security audit (Cloudflare security-audit skill, standard profile) with all confirmed findings
   fixed; reports under `docs/security-audit/run-1/`.
 
-[Unreleased]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.3.0...v0.4.1
 [0.3.0]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.1.2...v0.2.0

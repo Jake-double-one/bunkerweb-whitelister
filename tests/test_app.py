@@ -1014,6 +1014,30 @@ def test_invite_page_carries_its_own_styles(make_client, fake_bw):
     asyncio.run(run())
 
 
+def test_invite_page_has_a_messenger_preview(make_client, fake_bw):
+    app, _store, _settings = make_client(PUBLIC_URL="https://wl.example")
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            url, _ = await _make_invite(c, _csrf((await c.get("/")).text))
+            token = url.rsplit("/", 1)[1]
+        async with _guest(app, "198.51.100.9") as g:
+            r = await g.get(f"/i/{token}")
+            assert '<meta property="og:title" content="Access invitation: Tax advisor">' in r.text
+            assert '<meta property="og:image" content="https://wl.example/i/og.png">' in r.text
+            assert f'<meta property="og:url" content="https://wl.example/i/{token}">' in r.text
+            assert "<title>Access invitation: Tax advisor</title>" in r.text
+            img = await g.get("/i/og.png")
+            assert img.status_code == 200 and img.headers["content-type"] == "image/png" and img.content[:4] == b"\x89PNG"
+            assert img.headers["cache-control"] == "public, max-age=86400"
+            # a dead link reveals no name
+            r = await g.get("/i/" + "x" * 32)
+            assert "og:title" in r.text and "Tax advisor" not in r.text
+
+    asyncio.run(run())
+
+
 def test_invite_link_uses_public_url_when_configured(make_client, fake_bw):
     app, _store, _settings = make_client(PUBLIC_URL="https://whitelist.example.org/")
 

@@ -1,5 +1,21 @@
 {% extends "base.html" %}
-{% block title %}{{ t('invite.page_title') }} · {{ t('app.title') }}{% endblock %}
+{% set og_title = t('invite.og_title', name=invite.name) if invite else t('invite.closed_title') %}
+{% block title %}{{ og_title }}{% endblock %}
+{% block head_extra %}
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="{{ t('app.title') }}">
+<meta property="og:title" content="{{ og_title }}">
+<meta property="og:description" content="{{ t('invite.og_description') }}">
+<meta property="og:url" content="{{ page_url }}">
+<meta property="og:image" content="{{ origin }}/i/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{ og_title }}">
+<meta name="twitter:description" content="{{ t('invite.og_description') }}">
+<meta name="twitter:image" content="{{ origin }}/i/og.png">
+<meta name="robots" content="noindex, nofollow">
+{% endblock %}
 {% block header_status %}{% endblock %}
 {# The guest reaches only this path: the stylesheet rides inside the page (CSP nonce), no script, no skin switch. #}
 {% block assets %}<style nonce="{{ nonce }}">{{ inline_css | safe }}</style>{% endblock %}

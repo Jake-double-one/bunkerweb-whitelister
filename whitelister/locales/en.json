@@ -178,5 +178,7 @@
   "history.invite_create": "Link created{label}",
   "history.invite_revoke": "Link revoked{label}",
   "history.invite_redeem": "{network} unlocked via link{label}",
-  "history.invite_refresh": "{network} renewed via link{label}"
+  "history.invite_refresh": "{network} renewed via link{label}",
+  "invite.og_title": "Access invitation: {name}",
+  "invite.og_description": "One click unlocks this connection. No password, nothing to install."
 }

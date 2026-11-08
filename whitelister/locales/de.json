@@ -172,5 +172,7 @@
   "history.invite_create": "Link erzeugt{label}",
   "history.invite_revoke": "Link widerrufen{label}",
   "history.invite_redeem": "{network} per Link freigeschaltet{label}",
-  "history.invite_refresh": "{network} per Link erneuert{label}"
+  "history.invite_refresh": "{network} per Link erneuert{label}",
+  "invite.og_title": "Einladung zur Freischaltung: {name}",
+  "invite.og_description": "Ein Klick schaltet diese Verbindung frei. Kein Passwort, nichts zu installieren."
 }
