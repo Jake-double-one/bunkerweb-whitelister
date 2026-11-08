@@ -22,7 +22,13 @@ confirmed findings were rated low; all are fixed here with regression tests.
   or the BunkerWeb API by pressing the button repeatedly.
 - Removing an invite-added entry on the operator page now sticks: the link remembers the
   address as removed, the guest page says so, the slot stays spent and the button refuses
-  (HTTP 409) instead of quietly re-adding the address as a "renewal".
+  (HTTP 409) instead of quietly re-adding the address as a "renewal". Listing the address by
+  hand again lifts that block; an entry that merely ran out may still be renewed through the
+  link, as documented.
+- An address that is on the list because the operator added it is new to a link all the same:
+  a spent link cannot lengthen it, and the guest page does not reveal that it is listed.
+- When an address cannot be stored (entry cap reached, entry removed a moment ago) the guest
+  page says so (HTTP 503) instead of showing the "address could not be determined" text.
 - Unknown invitation tokens are still throttled per address, but no longer share a process-wide
   budget: a handful of strangers guessing tokens could lock every legitimate link holder out
   for a minute. A 192-bit token cannot be guessed, so the per-address lock is enough.
@@ -35,6 +41,8 @@ confirmed findings were rated low; all are fixed here with regression tests.
 - `docker-compose.example.yml` was already correct; the README quick start now shows the same
   `WHITELIST_IP_URLS` with `?token=` so that following it with the example `.env` does not make
   every BunkerWeb fetch a 403.
+- Dependencies re-pinned to the newest releases (FastAPI 0.162.2, pydantic 2.14.3, anyio 4.16.0,
+  click 8.5.1).
 
 ## [0.4.2] - 2026-11-08
 

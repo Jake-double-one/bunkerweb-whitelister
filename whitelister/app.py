@@ -291,6 +291,25 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         except ValidationError:
             return None
 
+    def invite_status(invite: Invite, net: str, now: datetime) -> tuple[str, Entry | None]:
+        """What a link can do for the address it is opened from, and the entry that exists for it.
+
+        ``removed``: the operator took an address this link had added off the list; the link cannot bring it
+        back. ``exhausted``: the address is new to the link and the budget is spent (an entry the operator
+        made is no reason to skip the budget). ``known``: the link added the address and it is still on
+        the list. ``ready``: pressing the button adds it (or lengthens an entry that ends sooner).
+        """
+        seen = store.invite_address_state(invite.id, net)
+        existing = store.find(net)
+        active = existing is not None and (existing.expires_at is None or existing.expires_at > now)
+        if seen == "removed" and not active:
+            return "removed", existing
+        if seen is None and invite.remaining == 0:
+            return "exhausted", existing
+        if seen == "known" and active:
+            return "known", existing
+        return "ready", existing
+
     def invite_view(
         request: Request, invite: Invite | None, now: datetime, state: str, until: datetime | None = None, status_code: int = 200
     ) -> Response:
@@ -726,14 +745,8 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         net = redeemer_network(ip)
         if net is None:
             return invite_view(request, invite, now, "no_address")
-        seen = store.invite_address_state(invite.id, net)
-        if seen == "removed":
-            return invite_view(request, invite, now, "removed")
-        existing = store.find(net)
-        known = seen == "known" or existing is not None
-        if not known and invite.remaining == 0:
-            return invite_view(request, invite, now, "exhausted")
-        return invite_view(request, invite, now, "known" if known else "ready", until=existing.expires_at if existing else None)
+        state, existing = invite_status(invite, net, now)
+        return invite_view(request, invite, now, state, until=existing.expires_at if existing else None)
 
     @app.post("/i/{token}", response_class=HTMLResponse, include_in_schema=False)
     async def invite_redeem(request: Request, token: str) -> Response:
@@ -747,13 +760,9 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         net = redeemer_network(ip)
         if net is None:
             return invite_view(request, invite, now, "no_address", status_code=400)
-        seen = store.invite_address_state(invite.id, net)
-        if seen == "removed":
-            return invite_view(request, invite, now, "removed", status_code=409)
-        existing = store.find(net)
-        known = seen == "known" or existing is not None
-        if not known and invite.remaining == 0:
-            return invite_view(request, invite, now, "exhausted", status_code=409)
+        state, existing = invite_status(invite, net, now)
+        if state in ("removed", "exhausted"):
+            return invite_view(request, invite, now, state, status_code=409)
         expires = now + timedelta(days=invite.access_days)
         # A link only ever adds: an entry the operator made (another label, a longer or permanent period)
         # is left as it is, and a renewal that would gain less than an hour changes nothing at all.
@@ -763,12 +772,15 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
                 entry = store.upsert(net, invite.name, expires, now, created_by=f"invite:{invite.name}")
                 changed = True
             elif existing.expires_at is not None and existing.expires_at + INVITE_RENEWAL_GAIN <= expires:
-                entry = store.set_expiry(existing.id, expires, now) or existing
-                changed = True
+                updated = store.set_expiry(existing.id, expires, now)
+                if updated is None:  # removed by the operator a moment ago
+                    return invite_view(request, invite, now, "failed", status_code=503)
+                entry, changed = updated, True
             else:
                 entry = existing
-        except ValidationError:
-            return invite_view(request, invite, now, "no_address", status_code=400)
+        except ValidationError as exc:
+            log.warning("invite %s: address %s could not be added: %s", invite.name, net, exc.key)
+            return invite_view(request, invite, now, "failed", status_code=503)
         is_new = store.invite_touch_address(invite.id, net, now)
         audit_event(
             request,

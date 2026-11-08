@@ -225,9 +225,11 @@ IP addresses: create a link under **Invitations** and send it to them.
   an hour changes nothing). Colleagues can share one link; each new address uses one slot.
 
 A link only ever adds. An address you listed yourself keeps its label, origin and period (a
-permanent entry stays permanent); the link can only lengthen it. If you remove an address the
-link had added, the link remembers that: the slot stays spent and the page tells the person
-that the address was removed, instead of quietly putting it back.
+permanent entry stays permanent); the link can only lengthen it, and only while it has budget
+left for that address. If you remove an address a link had added, the link remembers that: the
+slot stays spent and the page tells the person that the address was removed, instead of quietly
+putting it back (listing the address by hand again lifts the block). An address whose period
+simply ran out may be renewed through the link as long as the link is open.
 
 The person opens the link, sees a plain page ("Press the button and this connection is
 unlocked for 14 days") and presses one button. The confirmation then runs a purely visual

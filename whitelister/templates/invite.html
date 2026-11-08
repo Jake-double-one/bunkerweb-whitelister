@@ -36,6 +36,8 @@
       <p class="lead">{{ t('invite.exhausted') }}</p>
     {% elif state == 'removed' %}
       <p class="lead">{{ t('invite.removed') }}</p>
+    {% elif state == 'failed' %}
+      <p class="lead">{{ t('invite.failed') }}</p>
     {% elif state == 'done' and until is none %}
       <p class="lead">{{ t('invite.done_forever') }}</p>
     {% elif state == 'done' %}

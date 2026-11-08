@@ -165,6 +165,7 @@
   "invite.no_address": "Your address could not be determined, so nothing can be unlocked from here.",
   "invite.exhausted": "This link has used up its addresses. Please ask for a new one.",
   "invite.removed": "This address was removed from the list by the operator, so this link cannot unlock it again. Please ask for a new link.",
+  "invite.failed": "The address could not be added right now. Please try again in a moment.",
   "invite.known_forever": "This connection is already unlocked permanently. The button changes nothing.",
   "invite.removed_at": "removed {date}",
   "invite.ready": "Press the button and this connection is unlocked for {days}.",

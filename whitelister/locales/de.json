@@ -159,6 +159,7 @@
   "invite.no_address": "Ihre Adresse konnte nicht ermittelt werden, deshalb kann von hier aus nichts freigeschaltet werden.",
   "invite.exhausted": "Dieser Link hat seine Adressen aufgebraucht. Bitte um einen neuen bitten.",
   "invite.removed": "Diese Adresse wurde vom Betreiber von der Liste entfernt; dieser Link kann sie nicht erneut freischalten. Bitte um einen neuen Link bitten.",
+  "invite.failed": "Die Adresse konnte gerade nicht eingetragen werden. Bitte gleich noch einmal versuchen.",
   "invite.known_forever": "Diese Verbindung ist bereits dauerhaft freigeschaltet. Der Knopf ändert nichts.",
   "invite.removed_at": "entfernt {date}",
   "invite.ready": "Mit einem Klick auf den Knopf wird diese Verbindung für {days} freigeschaltet.",

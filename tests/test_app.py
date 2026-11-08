@@ -1097,9 +1097,11 @@ def test_invite_redemption_never_shortens_or_relabels_an_operator_entry(make_cli
         calls_before = len(fake_bw.calls)
         async with _guest(app, "198.51.100.77") as g:
             r = await g.get(f"/i/{token}")
-            assert r.status_code == 200 and "already unlocked permanently" in r.text
+            assert r.status_code == 200 and "Unlock my access" in r.text  # the page does not tell what the operator listed
             r = await g.post(f"/i/{token}", headers=HDR)
             assert r.status_code == 200 and "is permanent" in r.text
+            r = await g.get(f"/i/{token}")
+            assert "already unlocked permanently" in r.text  # now the link knows the address
         after = store.find("198.51.100.77")
         assert after.expires_at is None and after.label == "Office NAT" and after.created_by == permanent.created_by
         assert len(fake_bw.calls) == calls_before  # nothing changed, so BunkerWeb was not bothered
@@ -1214,5 +1216,72 @@ def test_prefill_and_invite_name_with_bad_values_do_not_crash(make_client, fake_
             assert r.status_code == 303 and store.invites_open(datetime.now(UTC)) == []
             assert "64" in (await c.get("/")).text  # the flash names the limit
             assert store.count() == 0
+
+    asyncio.run(run())
+
+
+def test_exhausted_link_does_not_touch_an_operator_entry_for_a_new_address(make_client, fake_bw):
+    app, store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            csrf = _csrf((await c.get("/")).text)
+            await c.post("/entries", data={"network": "198.51.100.90", "label": "Visitor", "duration": "1", "_csrf": csrf})
+            url, _ = await _make_invite(c, csrf, max_addresses="1")
+            token = url.rsplit("/", 1)[1]
+        async with _guest(app, "198.51.100.77") as g:
+            assert (await g.post(f"/i/{token}", headers=HDR)).status_code == 200
+        before = store.find("198.51.100.90")
+        async with _guest(app, "198.51.100.90") as g:  # on the list thanks to the operator, but new to the spent link
+            r = await g.get(f"/i/{token}")
+            assert "used up its addresses" in r.text and "already unlocked" not in r.text
+            assert (await g.post(f"/i/{token}", headers=HDR)).status_code == 409
+        assert store.find("198.51.100.90").expires_at == before.expires_at
+        async with await _proxied(app) as c:
+            await login(c)
+            assert "1 of 1 addresses used" in (await c.get("/")).text
+
+    asyncio.run(run())
+
+
+def test_link_handles_expired_purged_and_manually_readded_entries(make_client, fake_bw):
+    app, store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            csrf = _csrf((await c.get("/")).text)
+            url, _ = await _make_invite(c, csrf, max_addresses="1")
+            token = url.rsplit("/", 1)[1]
+        async with _guest(app, "198.51.100.77") as g:
+            assert (await g.post(f"/i/{token}", headers=HDR)).status_code == 200
+            entry = store.find("198.51.100.77")
+            store.set_expiry(entry.id, datetime.now(UTC) - timedelta(days=1))  # ran out, still in retention
+            r = await g.get(f"/i/{token}")
+            assert "Unlock my access" in r.text and "already unlocked" not in r.text
+            store.purge_expired(datetime.now(UTC))  # and gone altogether
+            assert store.find("198.51.100.77") is None
+            r = await g.get(f"/i/{token}")
+            assert "Unlock my access" in r.text and "permanently" not in r.text
+            assert (await g.post(f"/i/{token}", headers=HDR)).status_code == 200  # a natural end may be renewed for free
+            assert store.find("198.51.100.77") is not None
+        entry = store.find("198.51.100.77")
+        async with await _proxied(app) as c:
+            await login(c)
+            csrf = _csrf((await c.get("/")).text)
+            await c.post(f"/entries/{entry.id}/delete", data={"_csrf": csrf})
+        async with _guest(app, "198.51.100.77") as g:
+            assert (await g.post(f"/i/{token}", headers=HDR)).status_code == 409  # removed by the operator: refused
+        async with await _proxied(app) as c:  # the operator lists the address by hand again
+            await login(c)
+            csrf = _csrf((await c.get("/")).text)
+            await c.post("/entries", data={"network": "198.51.100.77", "label": "Back", "duration": "1", "_csrf": csrf})
+        async with _guest(app, "198.51.100.77") as g:
+            r = await g.get(f"/i/{token}")
+            assert r.status_code == 200 and "Unlock my access" in r.text
+            assert (await g.post(f"/i/{token}", headers=HDR)).status_code == 200  # the link lengthens the operator's entry
+        back = store.find("198.51.100.77")
+        assert back.label == "Back" and back.expires_at - datetime.now(UTC) > timedelta(days=13)
 
     asyncio.run(run())
