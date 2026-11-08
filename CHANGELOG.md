@@ -7,6 +7,22 @@ All notable changes to bunkerweb-whitelister. The format follows
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-11-08
+
+### Added
+- "Check my address again" under the big address on the operator page. It asks the server
+  (`GET /whoami`, login required, never cached) which address the current request arrives from;
+  when it differs from the page the page reloads, otherwise it says so and explains that the
+  browser may still be using the old connection after a network change. Without JavaScript the
+  button simply reloads the page.
+
+### Notes
+- The whitelister itself never caches the shown address: it is resolved from each request's
+  headers, the page is sent with `Cache-Control: no-store`, and the service worker never caches
+  pages. If the address stays stale after a VPN change, the old value comes from the connection
+  or a proxy in front (a kept-alive HTTP/2 or migrated HTTP/3 connection keeps the peer address
+  it was opened with).
+
 ## [0.4.3] - 2026-11-08
 
 Follow-up to the second security audit (`docs/security-audit/run-2/`, run on 0.4.2). All five
@@ -165,7 +181,8 @@ First release.
 - Security audit (Cloudflare security-audit skill, standard profile) with all confirmed findings
   fixed; reports under `docs/security-audit/run-1/`.
 
-[Unreleased]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.4...HEAD
+[0.4.4]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.3.0...v0.4.1

@@ -11,21 +11,25 @@
 {% block content %}
   <div class="lede">
     <p class="eyebrow">{{ t('hero.eyebrow') }}</p>
-    <h1>{{ client_ip or t('hero.unknown_ip') }}</h1>
+    <h1 id="client-ip">{{ client_ip or t('hero.unknown_ip') }}</h1>
     <p class="note">
-      {% if not client_ip %}{{ t('hero.no_ip') }}
-      {% elif listed and listed.expires_at is none %}{{ t('hero.listed_forever') }}
-      {% elif listed %}{{ t('hero.listed', until=listed.expires_at | dt) }}
-      {% else %}{{ t('hero.not_listed') }}{% endif %}
+      <span id="hero-note">{{ hero_note }}</span>
       {% if listed and api_enabled %}<span class="micro confirm" data-ok="{{ 'yes' if listed_confirmed else 'no' }}">{% if listed_confirmed %}{{ t('hero.confirmed', at=list_fetched_at | dt) }}{% else %}{{ t('hero.unconfirmed') }}{% endif %}</span>{% endif %}
     </p>
-    {% if listed and listed.expires_at is not none %}
-    <form method="post" action="/entries/{{ listed.id }}/extend" class="row quick">
-      <input type="hidden" name="_csrf" value="{{ csrf }}">
-      <input type="hidden" name="duration" value="{{ quick_extend_days }}">
-      <button type="submit" class="chip on">{{ t('hero.quick_extend', days=t.plural('add.day', quick_extend_days)) }}</button>
-    </form>
-    {% endif %}
+    <div class="row hero-actions">
+      {% if listed and listed.expires_at is not none %}
+      <form method="post" action="/entries/{{ listed.id }}/extend" class="quick-extend">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <input type="hidden" name="duration" value="{{ quick_extend_days }}">
+        <button type="submit" class="chip on">{{ t('hero.quick_extend', days=t.plural('add.day', quick_extend_days)) }}</button>
+      </form>
+      {% endif %}
+      <form method="get" action="/" class="row refresh-ip" data-refresh-ip
+            data-busy="{{ t('hero.refresh_busy') }}" data-same="{{ t('hero.refresh_same') }}" data-failed="{{ t('hero.refresh_failed') }}">
+        <button type="submit" class="chip">{{ t('hero.refresh') }}</button>
+        <span class="refresh-status" data-refresh-status role="status" aria-live="polite"></span>
+      </form>
+    </div>
   </div>
 
   {% if flash %}

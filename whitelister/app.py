@@ -378,6 +378,16 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
             )
         return rows
 
+    def hero_note(ip: str | None, listed: Entry | None) -> str:
+        """The sentence under the big address; also returned by /whoami so the page can refresh it."""
+        if not ip:
+            return t("hero.no_ip")
+        if listed is None:
+            return t("hero.not_listed")
+        if listed.expires_at is None:
+            return t("hero.listed_forever")
+        return t("hero.listed", until=_fmt(listed.expires_at, tz, t("date.format")))
+
     def listed_entry(ip_text: str | None, now: datetime) -> Entry | None:
         if not ip_text:
             return None
@@ -517,6 +527,7 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
             "listed_confirmed": bool(listed and client.enabled and fetched is not None and fetched >= listed.updated_at),
             "quick_extend_days": QUICK_EXTEND_DAYS if QUICK_EXTEND_DAYS in settings.duration_presets else settings.duration_presets[0],
             "prefill": prefill_from_query(request, ip),
+            "hero_note": hero_note(ip, listed),
             "history": store.events_recent(HISTORY_ROWS),
             "invites": [{"invite": i, "addresses": store.invite_addresses(i.id)} for i in store.invites_open(now)],
             "invite_link_days": INVITE_LINK_DAYS,
@@ -799,6 +810,21 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
                 log.warning("invite redeemed but BunkerWeb refresh failed: %s", sync_error)
         invite = store.invite_get(invite.id) or invite
         return invite_view(request, invite, now, "done", until=entry.expires_at)
+
+    @app.get("/whoami", include_in_schema=False)
+    async def whoami(request: Request) -> Response:
+        """The address this request arrives from, resolved exactly like the page does it. The page's
+        "check my address again" button calls this after a network change; nothing is cached."""
+        no_store = {"Cache-Control": "no-store"}
+        if current_session(request) is None:
+            return JSONResponse({"error": "login"}, status_code=401, headers=no_store)
+        now = datetime.now(UTC)
+        ip, _ = client_ip(request)
+        listed = listed_entry(ip, now)
+        return JSONResponse(
+            {"ip": ip, "listed": listed is not None, "note": hero_note(ip, listed), "at": now.isoformat(timespec="seconds")},
+            headers=no_store,
+        )
 
     @app.get("/export", include_in_schema=False)
     async def export_entries(request: Request) -> Response:

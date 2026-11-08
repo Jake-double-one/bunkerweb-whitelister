@@ -728,10 +728,10 @@ def test_quick_extend_button_extends_own_listed_address(make_client, fake_bw):
         async with await _proxied(app) as c:
             await login(c)
             page = (await c.get("/")).text
-            assert "quick" not in page  # nothing listed yet: no quick button
+            assert "quick-extend" not in page  # nothing listed yet: no quick button
             await c.post("/entries", data={"network": "203.0.113.9", "label": "me", "duration": "7", "_csrf": _csrf(page)})
             page = (await c.get("/")).text
-            m = re.search(r'action="/entries/(\d+)/extend" class="row quick".*?name="duration" value="(\d+)"', page, re.S)
+            m = re.search(r'action="/entries/(\d+)/extend" class="quick-extend".*?name="duration" value="(\d+)"', page, re.S)
             assert m, "quick extend form missing"
             before = store.get(int(m.group(1))).expires_at
             r = await c.post(f"/entries/{m.group(1)}/extend", data={"duration": m.group(2), "_csrf": _csrf(page)})
@@ -1283,5 +1283,26 @@ def test_link_handles_expired_purged_and_manually_readded_entries(make_client, f
             assert (await g.post(f"/i/{token}", headers=HDR)).status_code == 200  # the link lengthens the operator's entry
         back = store.find("198.51.100.77")
         assert back.label == "Back" and back.expires_at - datetime.now(UTC) > timedelta(days=13)
+
+    asyncio.run(run())
+
+
+def test_whoami_reports_the_address_of_this_very_request(make_client, fake_bw):
+    app, _store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            r = await c.get("/whoami")
+            assert r.status_code == 401 and r.headers["cache-control"] == "no-store"
+            await login(c)
+            page = (await c.get("/")).text
+            assert 'id="client-ip">203.0.113.9<' in page and "Check my address again" in page
+            r = await c.get("/whoami")
+            assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
+            assert r.json()["ip"] == "203.0.113.9" and r.json()["listed"] is False and "not on the whitelist" in r.json()["note"]
+            # the next request arrives from another address (VPN switched): nothing is remembered
+            r = await c.get("/whoami", headers={"X-Forwarded-For": "198.51.100.5"})
+            assert r.json()["ip"] == "198.51.100.5"
+            assert 'id="client-ip">198.51.100.5<' in (await c.get("/", headers={"X-Forwarded-For": "198.51.100.5"})).text
 
     asyncio.run(run())

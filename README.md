@@ -286,6 +286,7 @@ Re-pin dependencies to the newest releases with `scripts/compile-requirements.sh
 | `GET /healthz` | everyone | `{"status":"ok"}`, 503 when the background loop has stopped |
 | `POST /invites`, `POST /invites/{id}/revoke` | session + CSRF | Create and revoke invitation links |
 | `GET /i/{token}`, `POST /i/{token}` | whoever has the link | Invitation page; the POST adds the visitor's address |
+| `GET /whoami` | session | The address this request arrives from, as JSON; used by the "check my address again" button |
 | `GET /export` | session | JSON backup of all entries |
 | `POST /import` | session + CSRF | Restore entries from such a backup (≤ 256 KB) |
 | `GET /sw.js`, `GET /offline`, `GET /static/manifest.webmanifest` | everyone | Installable-app shell, holds no data |

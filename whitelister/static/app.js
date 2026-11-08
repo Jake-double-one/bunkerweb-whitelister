@@ -50,6 +50,28 @@
   if (ip && myIp && myIp.dataset.ip) {
     myIp.addEventListener('click', () => { ip.value = myIp.dataset.ip; ip.focus(); });
   }
+  // "check my address again": asks the server which address this connection arrives from right now;
+  // when it differs from the page, the page is reloaded so the form and the list match it.
+  const refresh = document.querySelector('[data-refresh-ip]');
+  if (refresh) {
+    const status = refresh.querySelector('[data-refresh-status]');
+    const shown = document.getElementById('client-ip');
+    refresh.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      status.textContent = refresh.dataset.busy;
+      try {
+        const r = await fetch('/whoami?t=' + Date.now(), { cache: 'no-store', credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        if (r.status === 401) { location.reload(); return; }
+        if (!r.ok) throw new Error(String(r.status));
+        const data = await r.json();
+        if (data.ip && shown && data.ip !== shown.textContent.trim()) { location.reload(); return; }
+        status.textContent = refresh.dataset.same;
+      } catch (e) {
+        status.textContent = refresh.dataset.failed;
+      }
+    });
+  }
+
   const net24 = document.getElementById('net24');
   if (ip && net24) {
     net24.addEventListener('click', () => {

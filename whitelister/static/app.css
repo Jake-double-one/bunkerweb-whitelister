@@ -178,7 +178,10 @@ footer .mono { font-size: .78rem; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
 /* --- quality of life: quick extend, confirmation marks, list tools, history, backup */
-.lede .quick { margin-top: 10px; }
+.lede .hero-actions { margin-top: 10px; }
+.lede .refresh-ip { gap: 10px; }
+.refresh-status { font-size: .8rem; color: var(--muted); max-width: 46ch; }
+.refresh-status:empty { display: none; }
 .confirm { white-space: nowrap; }
 .confirm[data-ok="yes"] { color: var(--sun); }
 .confirm[data-ok="no"] { color: var(--muted); }
