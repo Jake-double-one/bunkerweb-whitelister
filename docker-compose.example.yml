@@ -7,7 +7,7 @@
 
 services:
   whitelister:
-    image: ghcr.io/jake-double-one/bunkerweb-whitelister:0.1.0
+    image: ghcr.io/jake-double-one/bunkerweb-whitelister:0.4.5
     container_name: whitelister
     restart: unless-stopped
     # Everything comes from .env (see .env.example). Do not repeat keys under `environment:`

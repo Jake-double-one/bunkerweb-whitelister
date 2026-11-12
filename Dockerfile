@@ -1,8 +1,7 @@
 # syntax=docker/dockerfile:1.7
-# Pinned to the current Python release line; Dependabot bumps the tag, CI rebuilds and scans it.
-ARG PYTHON_IMAGE=python:3.14-slim
-
-FROM ${PYTHON_IMAGE} AS build
+# Pinned to the current Python release line. The tag is written out in both FROM lines (no ARG)
+# so that Dependabot sees it and proposes the next line; CI rebuilds and scans every change.
+FROM python:3.15-slim AS build
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /build
 COPY requirements.txt .
@@ -12,7 +11,7 @@ RUN python -m venv --without-pip /opt/venv \
  && pip --python /opt/venv/bin/python install --no-cache-dir --require-hashes -r requirements.txt \
  && find /opt/venv -name '__pycache__' -type d -prune -exec rm -rf {} +
 
-FROM ${PYTHON_IMAGE}
+FROM python:3.15-slim
 LABEL org.opencontainers.image.title="bunkerweb-whitelister" \
       org.opencontainers.image.description="Password-protected front end for BunkerWeb's global IP whitelist" \
       org.opencontainers.image.source="https://github.com/Jake-double-one/bunkerweb-whitelister" \

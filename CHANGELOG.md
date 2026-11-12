@@ -7,6 +7,22 @@ All notable changes to bunkerweb-whitelister. The format follows
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-11-12
+
+Maintenance release: everything on the newest versions, and guards so it stays that way.
+
+### Changed
+- Base image and CI moved from Python 3.14 to **Python 3.15** (`python:3.15-slim`). The image
+  tag is written out in the Dockerfile's `FROM` lines so Dependabot sees it and proposes the
+  next release line by itself.
+- Dependencies re-pinned to the newest releases (FastAPI 0.162.5, annotated-doc 0.0.6); the
+  other 19 pins already were the newest. `pip-audit` reports no known vulnerabilities.
+- Dependabot now checks Python packages, the Docker base image and GitHub Actions daily
+  instead of weekly.
+- `docker-compose.example.yml` and the README name the current image tag (they still said
+  `0.1.0`). A test now fails when the package version, `pyproject.toml`, the changelog and
+  those example tags disagree, so they cannot drift apart again.
+
 ## [0.4.4] - 2026-11-08
 
 ### Added
@@ -181,7 +197,8 @@ First release.
 - Security audit (Cloudflare security-audit skill, standard profile) with all confirmed findings
   fixed; reports under `docs/security-audit/run-1/`.
 
-[Unreleased]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.5...HEAD
+[0.4.5]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.1...v0.4.2

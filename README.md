@@ -83,7 +83,7 @@ The page sits in front of a sensitive control, so it is built accordingly:
   permanent once the policy is tightened; such rows are warned about at startup. Labels are
   limited to 64 characters with control characters stripped. Request bodies over 16 KB and
   chunked uploads are rejected. Templates auto-escape.
-- **Container.** Multi-stage build on `python:3.14-slim` with the latest Debian
+- **Container.** Multi-stage build on `python:3.15-slim` with the latest Debian
   patches, no pip at runtime, non-root user `10001`, works with `read_only: true`,
   `cap_drop: ALL` and `no-new-privileges`. Dependencies are pinned with hashes
   (`requirements.txt`), CI runs `pip-audit` and a Trivy image scan on every push and
@@ -139,7 +139,7 @@ options and the BunkerWeb labels that publish the page.
 ### Make a password hash
 
 ```bash
-docker run --rm -it ghcr.io/jake-double-one/bunkerweb-whitelister:0.1.0 python -m whitelister.hashpw
+docker run --rm -it ghcr.io/jake-double-one/bunkerweb-whitelister:0.4.5 python -m whitelister.hashpw
 ```
 
 ## Configuration
