@@ -1038,6 +1038,79 @@ def test_invite_page_has_a_messenger_preview(make_client, fake_bw):
     asyncio.run(run())
 
 
+QR_ASIDE = '<aside class="invite-qr">'
+
+
+def _qr_modules(page: str) -> tuple[int, set[tuple[int, int]]]:
+    """The dark modules the page draws, read back from the SVG path."""
+    svg = re.search(r'<svg class="qr" viewBox="0 0 (\d+) \1".*?<path d="([^"]+)" fill="#000"/>', page, re.S)
+    assert svg, "no QR code on the page"
+    dark = set()
+    for x, y, w in re.findall(r"M(\d+) (\d+)h(\d+)v1h-\d+z", svg.group(2)):
+        dark.update((int(x) + i, int(y)) for i in range(int(w)))
+    return int(svg.group(1)), dark
+
+
+def test_invite_page_offers_the_link_as_a_qr_code(make_client, fake_bw):
+    import segno
+
+    hdr = {"Origin": "http://wl.example", "Sec-Fetch-Site": "same-origin"}
+    app, _store, _settings = make_client(PUBLIC_URL="https://wl.example")
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            url, _ = await _make_invite(c, _csrf((await c.get("/")).text), max_addresses="2")
+            token = url.rsplit("/", 1)[1]
+            assert QR_ASIDE not in (await c.get("/")).text  # the operator page shows the link, not a code
+        async with _guest(app, "198.51.100.9") as g:
+            r = await g.get(f"/i/{token}")
+            assert "On your phone too?" in r.text
+            # The code holds exactly the public link, with the quiet zone scanners need around it.
+            size, dark = _qr_modules(r.text)
+            matrix = segno.make(f"https://wl.example/i/{token}", error="m", micro=False).matrix
+            assert size == len(matrix) + 8
+            assert dark == {(x + 4, y + 4) for y, row in enumerate(matrix) for x, on in enumerate(row) if on}
+            # Drawn inside the page: no image request, no inline style, nothing the CSP would have to allow.
+            assert "<img" not in r.text and " style=" not in r.text
+            # One slot left after this redemption: the code stays for the second device.
+            r = await g.post(f"/i/{token}", headers=hdr)
+            assert r.status_code == 200 and QR_ASIDE in r.text
+        async with _guest(app, "198.51.100.10") as g2:
+            # The last slot is gone: a new device could do nothing with the link, so no code is offered.
+            r = await g2.post(f"/i/{token}", headers=hdr)
+            assert r.status_code == 200 and QR_ASIDE not in r.text
+            assert QR_ASIDE not in (await g2.get(f"/i/{token}")).text
+        async with _guest(app, "198.51.100.11") as g3:
+            r = await g3.get(f"/i/{token}")
+            assert QR_ASIDE not in r.text  # exhausted
+            assert QR_ASIDE not in (await g3.get("/i/" + "x" * 43)).text  # unknown link
+
+    asyncio.run(run())
+
+
+def test_invite_qr_code_can_be_switched_off(make_client, fake_bw):
+    app, _store, settings = make_client(INVITE_QR="no")
+    assert settings.invite_qr is False
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            url, _ = await _make_invite(c, _csrf((await c.get("/")).text))
+        async with _guest(app, "198.51.100.9") as g:
+            r = await g.get("/i/" + url.rsplit("/", 1)[1])
+            assert r.status_code == 200 and QR_ASIDE not in r.text and "<svg" not in r.text
+
+    asyncio.run(run())
+
+
+def test_qr_code_gives_up_quietly_on_text_no_code_can_hold():
+    from whitelister.app import qr_code
+
+    assert qr_code("x" * 5000) is None
+    assert qr_code("https://wl.example/i/abc")["size"] >= 21 + 8
+
+
 def test_countdown_defaults_to_thirty_seconds(make_client):
     _app, _store, settings = make_client()
     assert settings.invite_wait_seconds == 30

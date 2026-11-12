@@ -165,6 +165,7 @@ All variables may be given as `NAME_FILE` (path to a secret) instead.
 | `MIN_PREFIX_V4` / `MIN_PREFIX_V6` | `16` / `48` | Widest allowed network |
 | `ALLOW_PRIVATE` | `yes` | Allow RFC 1918 / ULA entries |
 | `PUBLIC_URL` | from the request | Origin used in invitation links, e.g. `https://whitelist.example.org` |
+| `INVITE_QR` | `yes` | Show the invitation link as a QR code beside the invitation, to open it on a second device |
 | `INVITE_WAIT_SECONDS` | `30` | Countdown shown after a link is redeemed, while BunkerWeb picks the list up; `0` = none |
 | `BW_API_URL` | | e.g. `http://bw-api:8888`; unset = no API, list only |
 | `BW_API_USERNAME` / `BW_API_PASSWORD` | | API user; exchanged at `POST /auth` for a Biscuit token that is renewed on 401. Works for non-admin ACL users. Or: |
@@ -235,7 +236,10 @@ The person opens the link, sees a plain page ("Press the button and this connect
 unlocked for 14 days") and presses one button. The confirmation then runs a purely visual
 countdown (`INVITE_WAIT_SECONDS`, default 30) so they do not rush to the protected site before
 BunkerWeb has picked the change up. The unlock itself happens on the server: the page says so and
-need not stay open; links pasted into messengers show a title with the link's
+need not stay open. On a wide screen the page also shows the link as a QR code, for the phone
+that should be unlocked too (on mobile data it is an address of its own and uses a slot); the
+code is drawn inside the page, disappears once the link has no slot left, and `INVITE_QR=no`
+turns it off; links pasted into messengers show a title with the link's
 name and a preview card. A GET never changes anything, so mail scanners
 and link previews cannot redeem a link; the button is a same-origin POST. The page shows how
 many addresses are left and until when the link can be used. Only a SHA-256 of the token is

@@ -16,6 +16,7 @@ from typing import Any
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
+import segno
 from fastapi import FastAPI, Form, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -326,7 +327,12 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
             "wait_seconds": settings.invite_wait_seconds if state == "done" else 0,
             "origin": public_origin(request),
             "page_url": f"{public_origin(request)}{request.url.path}",
+            "qr": None,
         }
+        # A second device (the phone on mobile data) is a new address: offer the code only while the link
+        # can still do something for one.
+        if settings.invite_qr and invite is not None and state in ("ready", "known", "done") and invite.remaining != 0:
+            context["qr"] = qr_code(context["page_url"])
         return templates.TemplateResponse(request, "invite.html", context, status_code=status_code)
 
     def list_fetched_at() -> datetime | None:
@@ -925,6 +931,29 @@ def _joined_headers(request: Request) -> dict[str, str]:
     for key, value in request.headers.items():
         out[key] = f"{out[key]}, {value}" if key in out else value
     return out
+
+
+QR_QUIET_ZONE = 4  # modules of white around the code; scanners need them, above all on a dark page
+
+
+def qr_code(text: str) -> dict[str, Any] | None:
+    """The QR code for ``text`` as one SVG path (drawn by the template, no image request, no script)."""
+    try:
+        matrix = segno.make(text, error="m", micro=False).matrix
+    except ValueError:  # includes segno.DataOverflowError
+        return None  # longer than a code can hold: the page simply shows none
+    runs: list[str] = []
+    for y, row in enumerate(matrix):
+        x = 0
+        while x < len(row):
+            if not row[x]:
+                x += 1
+                continue
+            start = x
+            while x < len(row) and row[x]:
+                x += 1
+            runs.append(f"M{start + QR_QUIET_ZONE} {y + QR_QUIET_ZONE}h{x - start}v1h-{x - start}z")
+    return {"size": len(matrix) + 2 * QR_QUIET_ZONE, "path": "".join(runs)}
 
 
 def _public_url(url: str) -> str:

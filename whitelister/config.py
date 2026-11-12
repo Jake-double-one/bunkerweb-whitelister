@@ -115,6 +115,7 @@ class Settings:
     cookie_secure: bool
     public_url: str | None  # absolute origin for links sent to other people; derived from the request when unset
     invite_wait_seconds: int  # countdown shown after a redemption while BunkerWeb picks the list up; 0 = none
+    invite_qr: bool  # QR code of the link beside the invitation, to open it on a second device
     hsts: bool
 
     # Who may fetch the plain list
@@ -226,6 +227,7 @@ def load_settings(env_data_dir: str | None = None) -> Settings:
         cookie_secure=_bool("COOKIE_SECURE", True),
         public_url=public_url,
         invite_wait_seconds=_int("INVITE_WAIT_SECONDS", 30, minimum=0, maximum=600),
+        invite_qr=_bool("INVITE_QR", True),
         hsts=_bool("HSTS", False),
         list_allowed_networks=_networks("LIST_ALLOWED_NETWORKS", PRIVATE_NETWORKS),
         list_token=list_token,

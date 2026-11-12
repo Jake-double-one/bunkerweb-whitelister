@@ -27,6 +27,7 @@
     {% if invite %}<h1 class="invite-name">{{ invite.name }}</h1>{% else %}<h1 class="invite-name">{{ t('invite.closed_title') }}</h1>{% endif %}
   </div>
 
+  <div class="invite-layout">
   <section class="card narrow invite-card">
     {% if state == 'closed' %}
       <p class="lead">{{ t('invite.closed_text') }}</p>
@@ -77,6 +78,16 @@
     </p>
     {% endif %}
   </section>
+  {% if qr %}
+  <aside class="invite-qr">
+    <svg class="qr" viewBox="0 0 {{ qr.size }} {{ qr.size }}" role="img" aria-label="{{ t('invite.qr_label') }}" shape-rendering="crispEdges">
+      <rect width="{{ qr.size }}" height="{{ qr.size }}" fill="#fff"/><path d="{{ qr.path }}" fill="#000"/>
+    </svg>
+    <p class="qr-title">{{ t('invite.qr_title') }}</p>
+    <p class="note">{{ t('invite.qr_text') }}</p>
+  </aside>
+  {% endif %}
+  </div>
 {% endblock %}
 
 {% block footer %}{{ t('invite.footer') }}{% endblock %}

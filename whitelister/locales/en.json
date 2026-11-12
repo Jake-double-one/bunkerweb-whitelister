@@ -195,5 +195,8 @@
   "invite.wait_title": "Your access is being unlocked.",
   "invite.wait_step1": "Address recorded",
   "invite.wait_step2": "Gateway is picking up the new list",
-  "invite.wait_step3": "Almost there"
+  "invite.wait_step3": "Almost there",
+  "invite.qr_title": "On your phone too?",
+  "invite.qr_text": "Scan the code and press the button there. On mobile data the phone counts as an address of its own.",
+  "invite.qr_label": "QR code with this invitation link"
 }

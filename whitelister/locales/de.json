@@ -189,5 +189,8 @@
   "invite.wait_title": "Ihr Zugang wird gerade freigeschaltet.",
   "invite.wait_step1": "Adresse eingetragen",
   "invite.wait_step2": "Gateway übernimmt die neue Liste",
-  "invite.wait_step3": "Gleich geschafft"
+  "invite.wait_step3": "Gleich geschafft",
+  "invite.qr_title": "Auch am Handy?",
+  "invite.qr_text": "Scannen Sie den Code und drücken Sie dort den Knopf. Im Mobilfunknetz zählt das Handy als eigene Adresse.",
+  "invite.qr_label": "QR-Code mit diesem Einladungslink"
 }

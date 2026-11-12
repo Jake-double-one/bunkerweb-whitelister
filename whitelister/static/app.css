@@ -224,6 +224,14 @@ details.invites .note { margin: 10px 0 12px; }
 .invite-card .lead { margin: 0 0 14px; }
 .invite-card form { margin: 6px 0 10px; }
 .invite-meta { display: block; margin-top: 8px; }
+.invite-layout { display: flex; align-items: flex-start; gap: 28px; }
+.invite-layout > .invite-card { flex: 1 1 auto; min-width: 0; width: 100%; }
+.invite-qr { flex: 0 0 188px; display: flex; flex-direction: column; gap: 8px; }
+.invite-qr .qr { display: block; width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--line); background: #fff; }
+.invite-qr .qr-title { margin: 6px 0 0; font-weight: 600; font-size: .95rem; color: var(--ink); }
+.invite-qr .note { font-size: .82rem; }
+/* The code is for a second device; on a narrow screen that device is the one in your hand. */
+@media (max-width: 750px), print { .invite-qr { display: none; } }
 
 /* --- invitation: purely visual countdown after a redemption (no script on that page) */
 @property --t { syntax: "<integer>"; inherits: false; initial-value: 0; }

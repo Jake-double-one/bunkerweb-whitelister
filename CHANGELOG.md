@@ -9,6 +9,15 @@ All notable changes to bunkerweb-whitelister. The format follows
 
 ## [0.4.6] - 2026-11-12
 
+### Added
+- The invitation page shows its link as a QR code beside the card, so the person can open it on
+  their phone as well. On mobile data the phone is an address of its own and uses one of the
+  link's slots; the code is therefore only shown while the link has a slot left, and never on a
+  closed, spent or unknown link. It is drawn inside the page as SVG (no script, no image
+  request, no new route), hidden on narrow screens, and can be switched off with `INVITE_QR=no`.
+  New dependency for this: `segno` 1.6.6 (pure Python, no dependencies of its own), pinned with
+  hashes like the rest.
+
 ### Changed
 - The countdown after a redeemed invitation link now runs 30 seconds by default instead of 60
   (`INVITE_WAIT_SECONDS`, unchanged if you set it yourself).
