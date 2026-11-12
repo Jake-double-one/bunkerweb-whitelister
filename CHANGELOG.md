@@ -7,6 +7,17 @@ All notable changes to bunkerweb-whitelister. The format follows
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-11-12
+
+### Changed
+- The countdown after a redeemed invitation link now runs 30 seconds by default instead of 60
+  (`INVITE_WAIT_SECONDS`, unchanged if you set it yourself).
+
+### Fixed
+- The countdown no longer asks the guest to stay on the page. The unlock happens on the server
+  and does not depend on the page; the text now says the page may be closed and the protected
+  site should simply be opened after the time shown.
+
 ## [0.4.5] - 2026-11-12
 
 Maintenance release: everything on the newest versions, and guards so it stays that way.
@@ -197,7 +208,8 @@ First release.
 - Security audit (Cloudflare security-audit skill, standard profile) with all confirmed findings
   fixed; reports under `docs/security-audit/run-1/`.
 
-[Unreleased]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.5...HEAD
+[Unreleased]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.6...HEAD
+[0.4.6]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.2...v0.4.3

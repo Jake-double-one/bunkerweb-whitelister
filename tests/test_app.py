@@ -1038,6 +1038,11 @@ def test_invite_page_has_a_messenger_preview(make_client, fake_bw):
     asyncio.run(run())
 
 
+def test_countdown_defaults_to_thirty_seconds(make_client):
+    _app, _store, settings = make_client()
+    assert settings.invite_wait_seconds == 30
+
+
 def test_redeemed_page_shows_a_countdown_unless_disabled(make_client, fake_bw):
     hdr = {"Origin": "http://wl.example", "Sec-Fetch-Site": "same-origin"}
     for wait, expected in (("45", True), ("0", False)):
@@ -1057,6 +1062,8 @@ def test_redeemed_page_shows_a_countdown_unless_disabled(make_client, fake_bw):
                 if expected:
                     assert f'<style nonce="{nonce}">.wait{{--wait:45s;--wait-n:45}}</style>' in r.text
                     assert "being unlocked" in r.text and "wait-steps" in r.text and "You can go ahead now." in r.text
+                    # The unlock is server-side: the page must not ask the guest to stay on it.
+                    assert "do not have to keep this page open" in r.text and "stay on this page" not in r.text
                 else:
                     assert 'class="wait"' not in r.text and "It takes a moment" in r.text
 

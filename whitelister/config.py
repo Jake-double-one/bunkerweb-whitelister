@@ -225,7 +225,7 @@ def load_settings(env_data_dir: str | None = None) -> Settings:
         client_ip_header=client_ip_header,
         cookie_secure=_bool("COOKIE_SECURE", True),
         public_url=public_url,
-        invite_wait_seconds=_int("INVITE_WAIT_SECONDS", 60, minimum=0, maximum=600),
+        invite_wait_seconds=_int("INVITE_WAIT_SECONDS", 30, minimum=0, maximum=600),
         hsts=_bool("HSTS", False),
         list_allowed_networks=_networks("LIST_ALLOWED_NETWORKS", PRIVATE_NETWORKS),
         list_token=list_token,

@@ -190,7 +190,7 @@
   "history.invite_refresh": "{network} renewed via link{label}",
   "invite.og_title": "Access invitation: {name}",
   "invite.og_description": "One click unlocks this connection. No password, nothing to install.",
-  "invite.wait_text": "Please stay on this page for the moment shown above before you open anything else.",
+  "invite.wait_text": "You do not have to keep this page open, the unlock carries on by itself. Just give it the time shown before you open the protected site.",
   "invite.wait_done": "Done. You can go ahead now.",
   "invite.wait_title": "Your access is being unlocked.",
   "invite.wait_step1": "Address recorded",

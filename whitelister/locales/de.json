@@ -184,7 +184,7 @@
   "history.invite_refresh": "{network} per Link erneuert{label}",
   "invite.og_title": "Einladung zur Freischaltung: {name}",
   "invite.og_description": "Ein Klick schaltet diese Verbindung frei. Kein Passwort, nichts zu installieren.",
-  "invite.wait_text": "Bitte bleiben Sie für die angezeigte Zeit auf dieser Seite, bevor Sie etwas anderes öffnen.",
+  "invite.wait_text": "Sie müssen diese Seite nicht geöffnet lassen, die Freischaltung läuft von allein weiter. Rufen Sie die geschützte Seite einfach erst nach der angezeigten Zeit auf.",
   "invite.wait_done": "Fertig. Jetzt können Sie loslegen.",
   "invite.wait_title": "Ihr Zugang wird gerade freigeschaltet.",
   "invite.wait_step1": "Adresse eingetragen",
