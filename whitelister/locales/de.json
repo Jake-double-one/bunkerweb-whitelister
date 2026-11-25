@@ -150,6 +150,7 @@
   "invite.summary": "{access} Zugang pro Adresse · Link bis {until}",
   "invite.used": "{used} von {max} Adressen genutzt",
   "invite.used_unlimited": "{used} Adressen, ohne Limit",
+  "invite.used_ceiling": "{used} Adressen, mehr kann ein Link nicht freischalten",
   "invite.redeemed_at": "zuletzt {date}",
   "invite.revoke": "Widerrufen",
   "invite.revoke_confirm": "Link für {name} widerrufen? Bereits eingetragene Adressen bleiben bis zu ihrem Ablauf.",

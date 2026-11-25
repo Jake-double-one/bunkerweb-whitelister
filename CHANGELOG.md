@@ -7,6 +7,42 @@ All notable changes to bunkerweb-whitelister. The format follows
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-11-25
+
+Security release after a third full audit (`docs/security-audit/run-3/`, made on 0.4.6). Nothing
+critical: six confirmed records, five low and one informational, all fixed here with tests.
+
+### Security
+- **Login could be kept closed by strangers.** More than 30 wrong passwords per minute from
+  anywhere lock the login for everybody for a minute; repeated, that kept the operator out
+  (open sessions kept working). A browser that has logged in before now carries a signed marker
+  and is let past that shared lock; its own per-address lock still applies. A browser nobody
+  has seen is still locked with everybody else. The marker is bound to the password: a new
+  password voids it.
+- **A password change did not end open sessions.** The app now notices at start that the
+  password differs and ends every session opened with the old one.
+- **One "unlimited" link could fill the list.** Such a link now stops at 1000 addresses, links
+  add no new entries once the list is within 500 rows of its limit (that room is the
+  operator's), and an entry that already exists can be changed even when the list is full.
+- **A removed address could come back through a second link.** If you removed an address a link
+  had added, another link re-adding it gave the first link its reach back. The removal now
+  holds for that link until you list the address by hand again.
+- **Removals made before 0.4.3 left no mark.** On first start the database is checked once: an
+  address a link had added, that has no entry and whose latest history line is a removal, is
+  marked as removed. Removals older than the 200 history lines cannot be recovered.
+- A `days` value of several thousand digits in a prefill link no longer answers with a bare
+  error page.
+- No trailing-slash redirects any more (`/login/` is a 404): behind a TLS-terminating proxy the
+  redirect pointed at `http://` and repeated the path, which for `/i/<token>/` is the token.
+- The QR code is not drawn for text longer than 512 characters, which bounds the work a
+  request with an oversized `Host` header could cause.
+
+### Changed
+- CI: the registry push runs in its own job, the only one whose token may write packages;
+  tests, build, smoke test and scan no longer hold that right. All actions are pinned by
+  commit SHA (Dependabot keeps them current).
+- `pyproject.toml` lists `segno` among the dependencies, like `requirements.in` already did.
+
 ## [0.4.6] - 2026-11-12
 
 ### Added
@@ -217,7 +253,8 @@ First release.
 - Security audit (Cloudflare security-audit skill, standard profile) with all confirmed findings
   fixed; reports under `docs/security-audit/run-1/`.
 
-[Unreleased]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.6...HEAD
+[Unreleased]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.7...HEAD
+[0.4.7]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/Jake-double-one/bunkerweb-whitelister/compare/v0.4.3...v0.4.4

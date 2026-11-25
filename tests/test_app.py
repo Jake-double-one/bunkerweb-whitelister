@@ -1359,7 +1359,7 @@ def test_link_handles_expired_purged_and_manually_readded_entries(make_client, f
             await c.post("/entries", data={"network": "198.51.100.77", "label": "Back", "duration": "1", "_csrf": csrf})
         async with _guest(app, "198.51.100.77") as g:
             r = await g.get(f"/i/{token}")
-            assert r.status_code == 200 and "Unlock my access" in r.text
+            assert r.status_code == 200 and "Renew my access" in r.text  # listing by hand lifted the block
             assert (await g.post(f"/i/{token}", headers=HDR)).status_code == 200  # the link lengthens the operator's entry
         back = store.find("198.51.100.77")
         assert back.label == "Back" and back.expires_at - datetime.now(UTC) > timedelta(days=13)
@@ -1384,5 +1384,271 @@ def test_whoami_reports_the_address_of_this_very_request(make_client, fake_bw):
             r = await c.get("/whoami", headers={"X-Forwarded-For": "198.51.100.5"})
             assert r.json()["ip"] == "198.51.100.5"
             assert 'id="client-ip">198.51.100.5<' in (await c.get("/", headers={"X-Forwarded-For": "198.51.100.5"})).text
+
+    asyncio.run(run())
+
+
+# --- security audit run-3 (0.4.7) ---------------------------------------------------------------
+
+
+def test_a_removed_address_stays_removed_for_its_link_when_another_link_adds_it(make_client, fake_bw):
+    app, store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            csrf = _csrf((await c.get("/")).text)
+            url_a, _ = await _make_invite(c, csrf, name="Link A", access_days="14")
+            url_b, _ = await _make_invite(c, _csrf((await c.get("/")).text), name="Link B", access_days="1")
+        a, b = url_a.rsplit("/", 1)[1], url_b.rsplit("/", 1)[1]
+        async with _guest(app, "198.51.100.61") as g:
+            assert (await g.post(f"/i/{a}", headers=HDR)).status_code == 200
+        entry = store.find("198.51.100.61")
+        async with await _proxied(app) as c:
+            await login(c)
+            await c.post(f"/entries/{entry.id}/delete", data={"_csrf": _csrf((await c.get("/")).text)})
+        async with _guest(app, "198.51.100.61") as g:
+            assert (await g.post(f"/i/{a}", headers=HDR)).status_code == 409
+            assert (await g.post(f"/i/{b}", headers=HDR)).status_code == 200  # another link may add it: one day
+            short = store.find("198.51.100.61").expires_at
+            # ... but that does not hand link A its reach back
+            assert (await g.post(f"/i/{a}", headers=HDR)).status_code == 409
+            assert store.find("198.51.100.61").expires_at == short
+
+    asyncio.run(run())
+
+
+def test_removals_from_before_the_removal_mark_are_backfilled_once(tmp_path):
+    import sqlite3
+
+    from whitelister.entries import EntryStore
+
+    path = tmp_path / "old.sqlite3"
+    store = EntryStore(path)
+    now = datetime.now(UTC)
+    inv = store.invite_create("hash" * 16, "Legacy", now + timedelta(days=14), 14, 1, now, "op")
+    store.invite_touch_address(inv.id, "198.51.100.50", now)  # removed by the operator, 0.4.2 left no mark
+    store.invite_touch_address(inv.id, "198.51.100.51", now)  # simply ran out: stays renewable
+    store.event_add("delete", "198.51.100.50", "", "op", now)
+    store.event_add("expire", "198.51.100.51", "", "", now)
+    for net, by in (("198.51.100.52", "203.0.113.9"), ("198.51.100.53", "invite:Other")):
+        store.invite_touch_address(inv.id, net, now)
+        store.delete(store.upsert(net, "", None, now, created_by="invite:Legacy").id)
+        store.upsert(net, "", None, now, created_by=by)
+    store.close()
+    raw = sqlite3.connect(path)
+    raw.execute("DELETE FROM meta WHERE key = 'removed_backfill'")  # as a database that never ran the backfill
+    raw.commit()
+    raw.close()
+
+    store = EntryStore(path)
+    assert store.invite_address_state(inv.id, "198.51.100.50") == "removed"
+    assert store.invite_address_state(inv.id, "198.51.100.51") == "known"
+    assert store.invite_address_state(inv.id, "198.51.100.52") == "known"  # listed by hand again before 0.4.7
+    assert store.invite_address_state(inv.id, "198.51.100.53") == "removed"  # re-added by another link only
+    store.invite_forget_removal("198.51.100.50")
+    store.close()
+    store = EntryStore(path)  # once only: a block the operator lifted is not put back
+    assert store.invite_address_state(inv.id, "198.51.100.50") == "known"
+
+
+def test_links_leave_room_for_the_operator_and_a_full_list_can_still_be_edited(make_client, fake_bw, monkeypatch):
+    import whitelister.entries as entries_mod
+
+    monkeypatch.setattr(entries_mod, "_MAX_ENTRIES", 20)  # reserve: 2 rows
+    app, store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            url, _ = await _make_invite(c, _csrf((await c.get("/")).text), max_addresses="0")
+        token = url.rsplit("/", 1)[1]
+        codes = []
+        for i in range(20):
+            async with _guest(app, f"198.51.100.{100 + i}") as g:
+                codes.append((await g.post(f"/i/{token}", headers=HDR)).status_code)
+        assert codes == [200] * 18 + [503] * 2 and store.count() == 18
+        async with await _proxied(app) as c:
+            await login(c)
+            for n in (1, 2):  # the reserve is the operator's
+                csrf = _csrf((await c.get("/")).text)
+                await c.post("/entries", data={"network": f"192.0.2.{n}", "label": "op", "duration": "7", "_csrf": csrf})
+            assert store.count() == 20
+            csrf = _csrf((await c.get("/")).text)
+            await c.post("/entries", data={"network": "192.0.2.3", "label": "op", "duration": "7", "_csrf": csrf})
+            assert store.find("192.0.2.3") is None  # full
+            csrf = _csrf((await c.get("/")).text)
+            await c.post("/entries", data={"network": "192.0.2.1", "label": "renamed", "duration": "forever", "_csrf": csrf})
+            assert store.find("192.0.2.1").label == "renamed"  # an entry that exists can still be changed
+
+    asyncio.run(run())
+
+
+def test_a_link_without_a_fixed_number_still_has_a_ceiling():
+    from whitelister.entries import INVITE_UNLIMITED_CEILING, Invite
+
+    now = datetime.now(UTC)
+    base = dict(id=1, name="x", created_at=now, created_by="", valid_until=now, access_days=1, max_addresses=0, revoked_at=None)
+    assert Invite(**base, used=INVITE_UNLIMITED_CEILING - 1).remaining is None
+    assert Invite(**base, used=INVITE_UNLIMITED_CEILING).remaining == 0
+
+
+def test_a_new_password_ends_the_sessions_of_the_old_one(env, fake_bw, tmp_path):
+    from whitelister.app import create_app
+    from whitelister.config import load_settings
+    from whitelister.entries import EntryStore
+
+    def build(password):
+        env(WHITELISTER_PASSWORD=password)
+        return create_app(load_settings(), store=EntryStore(tmp_path / "w.sqlite3"))
+
+    async def run():
+        app = build(PASSWORD)
+        async with await _proxied(app) as c:
+            await login(c)
+            cookies = dict(c.cookies)
+            assert (await c.get("/")).status_code == 200
+        app = build(PASSWORD)  # a plain restart keeps the session
+        async with await _proxied(app) as c:
+            c.cookies.update(cookies)
+            assert (await c.get("/")).status_code == 200
+        app = build("another-long-password-1")
+        async with await _proxied(app) as c:
+            c.cookies.update(cookies)
+            assert (await c.get("/")).status_code == 303
+
+    asyncio.run(run())
+
+
+def test_strangers_cannot_lock_a_browser_that_logged_in_before_out(make_client, fake_bw):
+    app, _store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            r = await login(c)
+            assert r.status_code == 303 and "wl_known" in r.headers.get("set-cookie", "")
+            known = {k: v for k, v in dict(c.cookies).items() if k == "wl_known"}
+        for i in range(33):  # wrong passwords from many addresses spend the shared budget
+            async with _guest(app, f"198.51.100.{i + 1}") as g:
+                await g.post("/login", data={"password": "wrong-password-xx"}, headers={"Origin": "http://wl.example"})
+        async with _guest(app, "203.0.113.200") as fresh:  # a browser nobody has seen: locked with everybody
+            r = await fresh.post("/login", data={"password": PASSWORD}, headers={"Origin": "http://wl.example"})
+            assert r.status_code == 429
+        async with _guest(app, "203.0.113.201") as back:  # the operator's browser, from a new address
+            back.cookies.update(known)
+            r = await back.post("/login", data={"password": PASSWORD}, headers={"Origin": "http://wl.example"})
+            assert r.status_code == 303
+            back.cookies.clear()
+            back.cookies.set("wl_known", "forged.value.here")
+            r = await back.post("/login", data={"password": PASSWORD}, headers={"Origin": "http://wl.example"})
+            assert r.status_code == 429  # the marker is signed
+
+    asyncio.run(run())
+
+
+def test_no_trailing_slash_redirect_and_no_crash_on_huge_numbers(make_client, fake_bw):
+    app, _store, _settings = make_client()
+
+    async def run():
+        async with _guest(app, "198.51.100.9") as g:
+            for path in ("/login/", "/i/" + "x" * 32 + "/"):
+                r = await g.get(path)
+                assert r.status_code == 404 and "location" not in r.headers
+        async with await _proxied(app) as c:
+            await login(c)
+            r = await c.get("/?add=me&days=" + "9" * 5000)
+            assert r.status_code == 200 and "content-security-policy" in r.headers
+
+    asyncio.run(run())
+
+
+def test_qr_code_is_not_drawn_for_overlong_text():
+    from whitelister.app import QR_MAX_TEXT, qr_code
+
+    assert qr_code("https://wl.example/i/" + "a" * (QR_MAX_TEXT - 21)) is not None
+    assert qr_code("https://wl.example/i/" + "a" * (QR_MAX_TEXT - 20)) is None
+
+
+def test_listing_by_hand_or_importing_lifts_a_links_removal_block(make_client, fake_bw):
+    app, store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            url, _ = await _make_invite(c, _csrf((await c.get("/")).text))
+        token = url.rsplit("/", 1)[1]
+        for ip, how in (("198.51.100.71", "add"), ("198.51.100.72", "import")):
+            async with _guest(app, ip) as g:
+                assert (await g.post(f"/i/{token}", headers=HDR)).status_code == 200
+            async with await _proxied(app) as c:
+                await login(c)
+                await c.post(f"/entries/{store.find(ip).id}/delete", data={"_csrf": _csrf((await c.get("/")).text)})
+                csrf = _csrf((await c.get("/")).text)
+                if how == "add":
+                    await c.post("/entries", data={"network": ip, "label": "Back", "duration": "1", "_csrf": csrf})
+                else:
+                    body = json.dumps({"entries": [{"network": ip, "label": "Back", "expires_at": None}]})
+                    r = await c.post("/import", data={"_csrf": csrf}, files={"file": ("w.json", body, "application/json")})
+                    assert r.status_code == 303
+            assert store.find(ip) is not None
+            async with _guest(app, ip) as g:
+                assert (await g.get(f"/i/{token}")).status_code == 200
+                assert (await g.post(f"/i/{token}", headers=HDR)).status_code == 200, how
+
+    asyncio.run(run())
+
+
+def test_known_browser_still_has_its_own_lock_and_dies_with_the_password(env, fake_bw, tmp_path):
+    from whitelister.app import create_app
+    from whitelister.config import load_settings
+    from whitelister.entries import EntryStore
+
+    def build(password):
+        env(WHITELISTER_PASSWORD=password)
+        return create_app(load_settings(), store=EntryStore(tmp_path / "w.sqlite3"))
+
+    origin = {"Origin": "http://wl.example"}
+
+    async def run():
+        app = build(PASSWORD)
+        async with await _proxied(app) as c:
+            await login(c)
+            known = {k: v for k, v in dict(c.cookies).items() if k == "wl_known"}
+        async with _guest(app, "203.0.113.210") as g:  # the marker does not excuse the browser's own failures
+            g.cookies.update(known)
+            codes = [(await g.post("/login", data={"password": "wrong-password-xx"}, headers=origin)).status_code for _ in range(8)]
+            assert codes[0] == 401 and codes[-1] == 429
+            assert (await g.post("/login", data={"password": PASSWORD}, headers=origin)).status_code == 429
+        app = build("another-long-password-1")
+        for i in range(33):
+            async with _guest(app, f"198.51.100.{i + 1}") as g:
+                await g.post("/login", data={"password": "wrong-password-xx"}, headers=origin)
+        async with _guest(app, "203.0.113.211") as g:  # a marker earned with the old password is worth nothing now
+            g.cookies.update(known)
+            assert (await g.post("/login", data={"password": "another-long-password-1"}, headers=origin)).status_code == 429
+
+    asyncio.run(run())
+
+
+def test_link_at_its_ceiling_is_exhausted_and_says_so(make_client, fake_bw, monkeypatch):
+    import whitelister.entries as entries_mod
+
+    monkeypatch.setattr(entries_mod, "INVITE_UNLIMITED_CEILING", 2)
+    app, _store, _settings = make_client()
+
+    async def run():
+        async with await _proxied(app) as c:
+            await login(c)
+            url, _ = await _make_invite(c, _csrf((await c.get("/")).text), max_addresses="0")
+            token = url.rsplit("/", 1)[1]
+            for ip in ("198.51.100.81", "198.51.100.82"):
+                async with _guest(app, ip) as g:
+                    assert (await g.post(f"/i/{token}", headers=HDR)).status_code == 200
+            async with _guest(app, "198.51.100.83") as g:
+                r = await g.get(f"/i/{token}")
+                assert QR_ASIDE not in r.text
+                assert (await g.post(f"/i/{token}", headers=HDR)).status_code == 409
+            page = (await c.get("/")).text
+            assert "2 addresses, the most one link can add" in page and "of 0 addresses" not in page
 
     asyncio.run(run())

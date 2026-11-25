@@ -51,13 +51,16 @@ The page sits in front of a sensitive control, so it is built accordingly:
 - **Login throttling.** Per client (IPv4 address, IPv6 /64): after `LOGIN_MAX_FAILURES` the
   client waits `LOGIN_LOCK_SECONDS`, doubling with every further failure (max 1 h). More than
   30 failures per minute from all clients together close the login for a minute, so a
-  distributed guessing run costs attempts rather than CPU. Password hashing runs off the
+  distributed guessing run costs attempts rather than CPU. A browser that has logged in before
+  carries a signed marker and is let past that shared lock (its own lock still applies), so
+  strangers cannot keep you out with wrong passwords. Password hashing runs off the
   event loop, at most two checks at a time. Cross-site posts are refused without counting.
   Every attempt is written to the audit log.
 - **Sessions.** Signed, time-limited cookie (`itsdangerous`), `HttpOnly`,
   `SameSite=Strict`, `Secure` and the `__Host-` prefix when `COOKIE_SECURE=yes`
   (default). Nothing but a random id is stored in it; the id is also kept server-side, so
-  logging out really ends the session. Rotating `SESSION_SECRET` logs everyone out.
+  logging out really ends the session. Changing the password ends every open session at the
+  next start; rotating `SESSION_SECRET` logs everyone out as well.
 - **CSRF.** Every form carries a per-session token; posts are also checked against
   `Sec-Fetch-Site` and `Origin`.
 - **Trusted proxies.** `TRUSTED_PROXIES` is mandatory (networks, or `none`). Forwarding
@@ -139,7 +142,7 @@ options and the BunkerWeb labels that publish the page.
 ### Make a password hash
 
 ```bash
-docker run --rm -it ghcr.io/jake-double-one/bunkerweb-whitelister:0.4.6 python -m whitelister.hashpw
+docker run --rm -it ghcr.io/jake-double-one/bunkerweb-whitelister:0.4.7 python -m whitelister.hashpw
 ```
 
 ## Configuration
@@ -224,12 +227,15 @@ IP addresses: create a link under **Invitations** and send it to them.
   so a rotating privacy address does not eat the budget). Opening the link again from a known
   address is free and only restarts that address's period (a renewal that would gain less than
   an hour changes nothing). Colleagues can share one link; each new address uses one slot.
+  "Unlimited" still stops at 1000 addresses per link, and links stop adding new entries when
+  the list is within 500 rows of its limit of 5000: that room stays yours.
 
 A link only ever adds. An address you listed yourself keeps its label, origin and period (a
 permanent entry stays permanent); the link can only lengthen it, and only while it has budget
 left for that address. If you remove an address a link had added, the link remembers that: the
 slot stays spent and the page tells the person that the address was removed, instead of quietly
-putting it back (listing the address by hand again lifts the block). An address whose period
+putting it back. That holds even if another link adds the address in the meantime; only
+listing the address by hand again lifts the block. An address whose period
 simply ran out may be renewed through the link as long as the link is open.
 
 The person opens the link, sees a plain page ("Press the button and this connection is
@@ -310,6 +316,15 @@ export/import, prefill links, PWA, Biscuit token auth). Reports under `docs/secu
 five confirmed low findings (all on the seams of the invitation feature and the prefill link,
 fixed in 0.4.3 with regression tests), two leads that need owner-observed deployment facts, and
 all five run-1 leads re-examined and resolved in the current source.
+
+A third full run (same profile; 16 hunters, two coverage critics, 20 verifiers) was made on
+v0.4.6, focused on everything changed since run-2 (invitation state logic, `/whoami`, the QR
+code and its new dependency, Python 3.15, the re-pinned requirements, daily Dependabot). Reports
+under `docs/security-audit/run-3/`: four of the five run-2 findings stayed closed, six records
+were confirmed (five low, one informational; all fixed in 0.4.7 with regression tests), and four
+leads need facts only the running deployment or the GitHub settings can show; two of them were
+closed from the source side in 0.4.7 anyway (no trailing-slash redirects, publishing in its own
+job with SHA-pinned actions).
 
 ## License
 

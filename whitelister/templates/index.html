@@ -220,7 +220,7 @@
         <li class="invite-item">
           <div class="invite-head">
             <strong>{{ inv.name }}</strong>
-            <span class="micro">{{ t('invite.summary', access=t.plural('add.day', inv.access_days), until=inv.valid_until | dt) }} · {% if inv.remaining is none %}{{ t('invite.used_unlimited', used=inv.used) }}{% else %}{{ t('invite.used', used=inv.used, max=inv.max_addresses) }}{% endif %}</span>
+            <span class="micro">{{ t('invite.summary', access=t.plural('add.day', inv.access_days), until=inv.valid_until | dt) }} · {% if inv.max_addresses == 0 and inv.remaining is none %}{{ t('invite.used_unlimited', used=inv.used) }}{% elif inv.max_addresses == 0 %}{{ t('invite.used_ceiling', used=inv.used) }}{% else %}{{ t('invite.used', used=inv.used, max=inv.max_addresses) }}{% endif %}</span>
             <form method="post" action="/invites/{{ inv.id }}/revoke" data-confirm="{{ t('invite.revoke_confirm', name=inv.name) }}">
               <input type="hidden" name="_csrf" value="{{ csrf }}">
               <button type="submit" class="chip">{{ t('invite.revoke') }}</button>

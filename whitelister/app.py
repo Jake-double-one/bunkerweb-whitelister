@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import ipaddress
 import json
 import logging
@@ -69,6 +70,9 @@ INVITE_ADDRESS_CHOICES = (1, 3, 5, 10, 0)  # 0 = unlimited
 INVITE_KEEP_DAYS = 30  # closed links stay visible in the store this long for the history, then go
 QUICK_EXTEND_DAYS = 7
 INVITE_RENEWAL_GAIN = timedelta(hours=1)  # a renewal must gain at least this, else it is a no-op (no refresh, no event)
+CREDENTIAL_KEY = "credential"  # meta: keyed fingerprint of the configured password, to notice a change
+KNOWN_BROWSER_SECONDS = 365 * 24 * 3600
+QR_MAX_TEXT = 512  # an invitation link is under 200 characters; anything longer gets no code
 LIST_FETCHED_KEY = "list_fetched_at"
 
 
@@ -124,6 +128,29 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
     hash_slots = asyncio.Semaphore(2)  # password checks run in a thread, at most two at a time
     cookie_name = "__Host-wl_session" if settings.cookie_secure else "wl_session"
     flash_cookie = "__Host-wl_flash" if settings.cookie_secure else "wl_flash"
+    # A browser that logged in once keeps this signed marker. It opens nothing; it only lets that browser
+    # past the lock that wrong passwords from anywhere put on the login for everybody.
+    # The marker is bound to the password it was earned with: a new password voids it like the sessions.
+    credential = hmac.new(
+        settings.session_secret, ("credential:" + (settings.password_hash or settings.password or "")).encode(), hashlib.sha256
+    ).hexdigest()
+    known_codec = URLSafeTimedSerializer(settings.session_secret, salt="whitelister.known:" + credential)
+    known_cookie = "__Host-wl_known" if settings.cookie_secure else "wl_known"
+
+    # A new password ends the sessions that were opened with the old one.
+    if store.meta_get(CREDENTIAL_KEY) not in (None, credential):
+        ended = store.sessions_clear()
+        log.warning("the password setting or the signing secret changed: %d open session(s) ended", ended)
+    store.meta_set(CREDENTIAL_KEY, credential)
+
+    def known_browser(request: Request) -> bool:
+        raw = request.cookies.get(known_cookie, "")
+        if not raw or len(raw) > 256:
+            return False
+        try:
+            return known_codec.loads(raw, max_age=KNOWN_BROWSER_SECONDS) == 1
+        except BadSignature:
+            return False
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -150,6 +177,8 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
             store.close()
 
     app = FastAPI(title="bunkerweb-whitelister", version=__version__, docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    # No trailing-slash redirects: behind a TLS-terminating proxy they would point at http://.
+    app.router.redirect_slashes = False
     app.add_middleware(SecurityHeadersMiddleware, hsts=settings.hsts)
     app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
     app.state.settings = settings
@@ -267,7 +296,7 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
             network = ip or ""
         days = None
         raw_days = q.get("days", "")
-        if raw_days.isascii() and raw_days.isdecimal() and int(raw_days) in settings.duration_presets:
+        if len(raw_days) <= 4 and raw_days.isascii() and raw_days.isdecimal() and int(raw_days) in settings.duration_presets:
             days = int(raw_days)
         try:
             label = normalize_label(q.get("label", ""))
@@ -303,7 +332,7 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         seen = store.invite_address_state(invite.id, net)
         existing = store.find(net)
         active = existing is not None and (existing.expires_at is None or existing.expires_at > now)
-        if seen == "removed" and not active:
+        if seen == "removed":
             return "removed", existing
         if seen is None and invite.remaining == 0:
             return "exhausted", existing
@@ -477,7 +506,7 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         if key is None:
             audit_event(request, "login.no_client_ip")
             return PlainTextResponse("forbidden", status_code=403)
-        wait = throttle.retry_after(key)
+        wait = throttle.retry_after(key, skip_global=known_browser(request))
         ctx = {"client_ip": ip, "session_hours": settings.session_hours, "next": safe_next(next_url)}
         if wait:
             audit_event(request, "login.locked", retry_after=wait)
@@ -488,7 +517,8 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         async with hash_slots:
             ok = await run_in_threadpool(checker.check, password)
         if not ok:
-            lock = throttle.record_failure(key)
+            throttle.record_failure(key)
+            lock = throttle.retry_after(key, skip_global=known_browser(request))  # what this very browser now waits
             audit_event(request, "login.failed", lock_seconds=lock)
             error = t("login.locked", seconds=lock) if lock else t("login.failed")
             return templates.TemplateResponse(request, "login.html", {**ctx, "error": error}, status_code=401)
@@ -499,6 +529,15 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         store.session_add(session.sid, datetime.now(UTC) + timedelta(seconds=codec.max_age))
         response = RedirectResponse(safe_next(next_url), status_code=303)
         set_session_cookie(response, session)
+        response.set_cookie(
+            known_cookie,
+            known_codec.dumps(1),
+            max_age=KNOWN_BROWSER_SECONDS,
+            path="/",
+            secure=settings.cookie_secure,
+            httponly=True,
+            samesite="strict",
+        )
         return response
 
     @app.post("/logout", include_in_schema=False)
@@ -592,6 +631,7 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
             entry = store.upsert(text, clean_label, expires, now, created_by=ip or "")
         except ValidationError as exc:
             return redirect_with_flash("/", "alert", t(exc.key, **exc.params))
+        store.invite_forget_removal(entry.network)  # listed by hand again: links may renew it once more
         audit_event(request, "entry.add", network=entry.network, label=entry.label, expires_at=_iso(entry.expires_at))
         remember(request, "add", entry.network, entry.label)
         sync_error = await refresh_after_change(request)
@@ -786,6 +826,9 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         changed = False
         try:
             if existing is None:
+                if not store.has_room_for_invite():
+                    log.warning("invite %s: the list is nearly full, links add no new addresses", invite.name)
+                    return invite_view(request, invite, now, "failed", status_code=503)
                 entry = store.upsert(net, invite.name, expires, now, created_by=f"invite:{invite.name}")
                 changed = True
             elif existing.expires_at is not None and existing.expires_at + INVITE_RENEWAL_GAIN <= expires:
@@ -891,6 +934,7 @@ def create_app(settings: Settings, store: EntryStore | None = None, client: Bunk
         try:
             for text, label, expires in planned:
                 store.upsert(text, label, expires, now, created_by=ip or "")
+                store.invite_forget_removal(text)
                 store.event_add("import", text, label, ip or "", now)
         except ValidationError as exc:
             return redirect_with_flash("/", "alert", t(exc.key, **exc.params))
@@ -938,6 +982,8 @@ QR_QUIET_ZONE = 4  # modules of white around the code; scanners need them, above
 
 def qr_code(text: str) -> dict[str, Any] | None:
     """The QR code for ``text`` as one SVG path (drawn by the template, no image request, no script)."""
+    if len(text) > QR_MAX_TEXT:
+        return None
     try:
         matrix = segno.make(text, error="m", micro=False).matrix
     except ValueError:  # includes segno.DataOverflowError

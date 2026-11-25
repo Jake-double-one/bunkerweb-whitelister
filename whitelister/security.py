@@ -139,7 +139,9 @@ class LoginThrottle:
     Failures are forgotten after an hour without new ones. A process-wide
     budget (``global_budget`` failures per minute, from all clients
     together) locks the login for everyone for a minute: a distributed
-    guessing run then costs attempts, not CPU. ``global_budget=None`` keeps
+    guessing run then costs attempts, not CPU. A browser that proved the
+    password before is let past that shared lock (``skip_global``), so
+    strangers cannot keep the operator out. ``global_budget=None`` keeps
     only the per-client part (for tokens that cannot be guessed anyway, where
     a shared lock would only let strangers lock legitimate holders out)."""
 
@@ -157,11 +159,12 @@ class LoginThrottle:
         self._window_failures = 0
         self._global_until = 0.0
 
-    def retry_after(self, key: str, now: float | None = None) -> int:
-        """Seconds the client still has to wait, 0 when allowed."""
+    def retry_after(self, key: str, now: float | None = None, skip_global: bool = False) -> int:
+        """Seconds the client still has to wait, 0 when allowed. ``skip_global`` is for a browser that
+        has logged in before: its own lock still applies, the lock everybody shares does not."""
         now = now if now is not None else time.time()
         with self._lock:
-            until = self._global_until
+            until = 0.0 if skip_global else self._global_until
             _, own_until, _ = self._state.get(key, (0, 0.0, 0.0))
             until = max(until, own_until)
             if until > now:

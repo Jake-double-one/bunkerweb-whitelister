@@ -1,0 +1,1109 @@
+[
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "ci.yml:image-job:write-token-shared-with-tag-pinned-actions",
+    "title": "Image job gives a packages:write token to tag-pinned actions on every event; the main/tag condition guards only the publish steps",
+    "description": "Verified in source: the `image` job requests `packages: write` and `security-events: write` at job level (ci.yml:43-46) for every trigger (push to any branch and v* tags, pull_request, weekly cron). The condition `github.event_name != 'pull_request' && (main || v*)` exists only on the three publish steps (ci.yml:92, 100, 109). Before those steps, six `uses:` lines covering five distinct actions (actions/checkout@v7, docker/setup-buildx-action@v4, docker/build-push-action@v7, aquasecurity/trivy-action@v0.36.0 twice, github/codeql-action/upload-sarif@v4) run in the same job with no ref condition; none of the nine `uses:` lines in the job is a 40-hex commit SHA. An action can read the job token without it being passed explicitly. Consequence if one of those action tags is moved or a malicious release is published upstream: its code runs in a job whose token is requested with package write scope, so the step-level ref condition is not the only route to ghcr.io/<repository>, the namespace that README.md:142 and docker-compose.example.yml:10 tell operators to pull by version tag. Corrections to the original wording: (1) the count is five distinct actions before the gate, not seven; (2) the Dependabot path is only one of several: runs on main, on v* tags and on the weekly cron execute the same tag-pinned actions with the same job-level grant, so the exposure to a moved tag does not depend on how Dependabot runs are treated; Dependabot (dependabot.yml:12-15, daily) adds runs of a newly proposed action version on its branch before review. Controls confirmed in source that narrow the claim: no pull_request_target/workflow_run trigger, top-level `contents: read`, code from the repository itself (tests, Dockerfile) runs in the `test` job or inside docker build/run where the token is not passed, and .dockerignore keeps .git out of the build context. Nothing here was or can be demonstrated locally: it needs a malicious third-party action release, and the effective token scope and registry acceptance are repository-host facts. This is a hardening-grade supply-chain exposure conditional on an upstream compromise, not an observed publication.",
+    "claimed_root_cause": "Registry write authority is granted to the whole image job instead of to a separate publish job that runs only for main and v* tags, and the actions sharing that job are referenced by mutable tag rather than commit SHA.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": ".github/workflows/ci.yml",
+        "line": 70,
+        "scope": "jobs.image.steps (Scan image (report))",
+        "description": "Third-party action code selected by a mutable tag (`aquasecurity/trivy-action@v0.36.0`; likewise lines 48, 49, 51, 79, 88) is fetched and executed on the runner at each run; whoever controls that tag upstream controls the code."
+      },
+      {
+        "kind": "propagation",
+        "file": ".github/dependabot.yml",
+        "line": 12,
+        "scope": "updates[github-actions]",
+        "description": "Daily Dependabot pull requests change the `uses:` versions; the proposed version is executed by CI on the Dependabot branch before a maintainer reviews it."
+      },
+      {
+        "kind": "propagation",
+        "file": ".github/workflows/ci.yml",
+        "line": 7,
+        "scope": "on",
+        "description": "The workflow starts on pull_request, on push to every branch and v* tags (lines 4-6) and on the weekly cron (line 9), so the image job runs for all of them."
+      },
+      {
+        "kind": "propagation",
+        "file": ".github/workflows/ci.yml",
+        "line": 43,
+        "scope": "jobs.image.permissions",
+        "description": "contents:read, packages:write and security-events:write are requested for the job unconditionally; there is no `if:` on the job and no `environment:`."
+      },
+      {
+        "kind": "sink",
+        "file": ".github/workflows/ci.yml",
+        "line": 103,
+        "scope": "jobs.image.steps (Image tags)",
+        "description": "The namespace ghcr.io/<repository> that the gated steps publish to is the one the job token is scoped for; the conditions on lines 92/100/109 restrict these steps, not the token held by the earlier action steps."
+      }
+    ],
+    "evidence": [
+      {
+        "file": ".github/workflows/ci.yml",
+        "line": 43,
+        "description": "Job-level `permissions:` with `packages: write` (line 45) and `security-events: write` (line 46); single job for build, scan and publish."
+      },
+      {
+        "file": ".github/workflows/ci.yml",
+        "line": 92,
+        "description": "The main/v* and not-pull_request condition appears only on the login (92), metadata (100) and push (109) steps."
+      },
+      {
+        "file": ".github/workflows/ci.yml",
+        "line": 79,
+        "description": "Actions referenced by tag; a search of the workflow finds zero `uses:` references with a 40-hex commit SHA."
+      },
+      {
+        "file": ".github/workflows/ci.yml",
+        "line": 9,
+        "description": "The weekly cron runs on the default branch, so tag-pinned actions are re-resolved and run with the publishing token every week without any repository change."
+      },
+      {
+        "file": ".github/dependabot.yml",
+        "line": 12,
+        "description": "`package-ecosystem: github-actions` with `interval: daily`."
+      },
+      {
+        "file": "docker-compose.example.yml",
+        "line": 10,
+        "description": "Operators pull `ghcr.io/jake-double-one/bunkerweb-whitelister:0.4.6` by tag, not digest (same in README.md:142), so an overwritten tag would reach deployments."
+      }
+    ],
+    "blockers": [
+      "The scenario requires a malicious or compromised upstream action release or a moved action tag; this cannot and must not be produced locally, and no sandbox execution of workflow code is possible offline.",
+      "Whether the GHCR package accepts pushes from this repository's Actions token and allows existing version tags to be overwritten (package 'Manage Actions access' and tag immutability settings are not in source).",
+      "Whether the repository or organisation enforces an allowed-actions list or mandatory SHA pinning, and which default workflow-token setting applies (Settings > Actions; not in source).",
+      "The effective GITHUB_TOKEN scope on Dependabot-triggered and fork pull_request runs (shown only in the run log). This affects only the pre-review Dependabot path; runs on main, v* tags and the cron request the write scope regardless."
+    ],
+    "validation_plan": {
+      "local": "Source reading only: confirm in .github/workflows/ci.yml that `packages: write` is at job level (line 45), that the ref condition is only on lines 92, 100 and 109, and that no `uses:` value ends in a 40-hex commit SHA. Verified this way by v3-1; no target code needs to run.",
+      "deployment": "Repository owner, read-only: (1) open the latest CI run on main and the latest Dependabot-triggered run, expand `Set up job` of the image job and read the `GITHUB_TOKEN Permissions` block for `Packages: write`; (2) check Settings > Actions > General for allowed actions, the SHA-pinning requirement and default token permissions; (3) open the package settings and read `Manage Actions access` and whether version tags can be overwritten; (4) check tag and branch rulesets. Do not test by pushing an image."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "docker-compose.example.yml:whitelister:dual-network:bunkerweb-unpinned-on-bw-universe-outside-TRUSTED_PROXIES",
+    "title": "Example compose leaves a second, untrusted path from BunkerWeb to the whitelister (bw-universe)",
+    "description": "In docker-compose.example.yml the whitelister and bunkerweb (and bw-scheduler) share two networks, bw-services and bw-universe. Only bunkerweb's bw-services address is fixed (10.20.30.2); .env.example trusts exactly that address (TRUSTED_PROXIES=10.20.30.2/32) and allows list downloads only from 10.20.30.0/24. The reverse-proxy target and the list URL use the name `whitelister`, which has an address on both networks. If BunkerWeb connects over bw-universe, its source address (dynamic, 10.20.40.0/24) is not a trusted proxy: X-Forwarded-For is ignored and every visitor is treated as BunkerWeb itself. Re-run in the sandbox with the example values (in-process, dummy secrets): peer 10.20.40.3 with X-Forwarded-For 203.0.113.50 resolves to 10.20.40.3; an invitation redeemed that way lists 10.20.40.3 instead of the guest's address and spends one of the link's address slots (the guest gets no access); three wrong passwords from three different forwarded addresses lock a fourth visitor with the correct password (429), while over the pinned address each visitor keeps an own counter (four wrong passwords, four times 401) and the correct password logs in (303); /ips.txt with the correct token answers 200 from 10.20.30.9 and 403 from 10.20.40.9, so a scheduler download over bw-universe would be refused. The control fails closed: no peer can choose a client identity. The effect is on availability (login lock for the operator, doubling up to 1 h while failures continue; invitations that do not admit the guest; possibly a stale list) and on audit attribution, not on access to the whitelist. Whether BunkerWeb or the scheduler ever use the bw-universe leg depends on Docker's name resolution for containers sharing two networks and on how BunkerWeb 1.6.17 resolves the upstream name; neither is determined by this repository, and the file itself marks the BunkerWeb services as a sketch.",
+    "claimed_root_cause": "The example attaches the whitelister to bw-universe (needed only for outbound calls to bw-api) while bunkerweb and bw-scheduler are also on that network without fixed addresses, and TRUSTED_PROXIES / LIST_ALLOWED_NETWORKS name only the bw-services side. The proxy hop is pinned by address on one of two possible legs but selected by a name that resolves on both.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "docker-compose.example.yml",
+        "line": 39,
+        "scope": "services.whitelister.labels",
+        "description": "BunkerWeb is told to proxy visitor requests to http://whitelister:8080, a service name rather than an address on one network."
+      },
+      {
+        "kind": "propagation",
+        "file": "docker-compose.example.yml",
+        "line": 20,
+        "scope": "services.whitelister.networks",
+        "description": "The whitelister joins bw-universe in addition to bw-services (line 19), so the name has an address on both networks."
+      },
+      {
+        "kind": "propagation",
+        "file": "docker-compose.example.yml",
+        "line": 51,
+        "scope": "services.bunkerweb.networks",
+        "description": "bunkerweb joins bw-universe with no ipv4_address; only its bw-services address is fixed (line 53). bw-scheduler (lines 62-64) shares both networks as well."
+      },
+      {
+        "kind": "propagation",
+        "file": ".env.example",
+        "line": 15,
+        "scope": "TRUSTED_PROXIES",
+        "description": "Only 10.20.30.2/32 is trusted; BunkerWeb's bw-universe address is outside it."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/security.py",
+        "line": 256,
+        "scope": "resolve_client_ip",
+        "description": "A peer outside TRUSTED_PROXIES is returned as the client and the forwarding header is not read (observed: peer 10.20.40.3 -> (10.20.40.3, False); peer 10.20.30.2 -> (203.0.113.50, True))."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/app.py",
+        "line": 476,
+        "scope": "login",
+        "description": "The login throttle key is derived from the resolved address, so all visitors arriving over the untrusted leg share one key; open_invite keys the invitation throttle the same way (line 732)."
+      },
+      {
+        "kind": "sink",
+        "file": "whitelister/app.py",
+        "line": 789,
+        "scope": "invite_redeem",
+        "description": "store.upsert lists the resolved address (the proxy's own) under the invitation's name; the same address goes to the audit log (line 346)."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "docker-compose.example.yml",
+        "line": 53,
+        "description": "bunkerweb is pinned to 10.20.30.2 on bw-services only; the comment at lines 48-49 says the pin exists so TRUSTED_PROXIES can name the ingress alone."
+      },
+      {
+        "file": "docker-compose.example.yml",
+        "line": 20,
+        "description": "whitelister is a member of bw-universe ('reachable to bw-api'), the second network it shares with bunkerweb and bw-scheduler; no ports are published."
+      },
+      {
+        "file": "docker-compose.example.yml",
+        "line": 2,
+        "description": "The BunkerWeb services are declared as only sketched (also line 45), so the operator's real attachment is not fixed by this file."
+      },
+      {
+        "file": ".env.example",
+        "line": 15,
+        "description": "TRUSTED_PROXIES=10.20.30.2/32."
+      },
+      {
+        "file": ".env.example",
+        "line": 24,
+        "description": "LIST_ALLOWED_NETWORKS=10.20.30.0/24; in the sandbox /ips.txt with the correct token returned 200 for peer 10.20.30.9 and 403 for peer 10.20.40.9."
+      },
+      {
+        "file": "whitelister/security.py",
+        "line": 256,
+        "description": "Untrusted peer: the TCP peer is the client and the header is ignored. Sandbox run (check-v3-2-universe-leg.txt, example values, LOGIN_MAX_FAILURES=3): redeeming via peer 10.20.40.3 with XFF 203.0.113.50 stored 10.20.40.3; via peer 10.20.30.2 with XFF 203.0.113.51 stored 203.0.113.51; three wrong passwords from three XFF values via 10.20.40.3 (401 each) were followed by 429 for a fourth XFF with the correct password, while the same login via 10.20.30.2 returned 303."
+      },
+      {
+        "file": "whitelister/app.py",
+        "line": 284,
+        "description": "redeemer_network accepts the private proxy address because ALLOW_PRIVATE=yes (.env.example:36), so the wrong address is stored rather than refused."
+      },
+      {
+        "file": "whitelister/security.py",
+        "line": 146,
+        "description": "LoginThrottle: after max_failures the key is locked for lock_seconds, doubling per further failure up to MAX_LOCK = 3600 s; with one shared key any visitor's failures extend the operator's lock."
+      }
+    ],
+    "blockers": [
+      "Not source-visible and not observable locally (no Docker in the sandbox): which address or addresses Docker's embedded DNS returns to the bunkerweb and bw-scheduler containers for `whitelister` when they share two networks with it, and whether the order is stable.",
+      "Not source-visible: how BunkerWeb 1.6.17 resolves REVERSE_PROXY_HOST (once at configuration load or per request, first address or rotation over all), and which address the scheduler's whitelist download uses; BunkerWeb's source is not part of this repository.",
+      "Not source-visible: whether the operator's real compose file keeps both containers on both networks as in the example, which the file itself calls a sketch."
+    ],
+    "validation_plan": {
+      "local": "The app-side half is settled in-process (harness.py in the verifier scratch, TRUSTED_PROXIES=10.20.30.2/32, LIST_ALLOWED_NETWORKS=10.20.30.0/24, dummy password and list token, no BW_API_URL): requests with ASGI peer 10.20.40.3 are attributed to 10.20.40.3 regardless of X-Forwarded-For. The remaining half needs Docker on an isolated host: bring up the example with dummy secrets and run `getent hosts whitelister` several times inside the bunkerweb and bw-scheduler containers, noting whether a 10.20.40.x address is returned.",
+      "deployment": "Read-only owner check on the running stack: `docker exec bunkerweb getent hosts whitelister` (same for bw-scheduler); in the whitelister's JSON audit lines on stdout look for client addresses in 10.20.40.0/24; open the login page through BunkerWeb several times and compare the address shown with your real public address; check the scheduler's whitelist download job for 403 answers from /ips.txt. If a bw-universe address appears, either point REVERSE_PROXY_HOST and the list URLs at the whitelister's bw-services address (give it a fixed one), or give bunkerweb a fixed bw-universe address and add it to TRUSTED_PROXIES (and the scheduler's network to LIST_ALLOWED_NETWORKS), or put the bw-api call path on a separate network so the whitelister shares only bw-services with bunkerweb and the scheduler; then adjust docker-compose.example.yml and .env.example the same way."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "whitelister/app.py/prefill_from_query/unhandled-ValidationError-ValueError",
+    "title": "Prefill link still raises an unhandled ValueError for a days value longer than 4300 digits",
+    "description": "The earlier prefill crash was fixed by guarding int() with str.isascii() and str.isdecimal() and by catching the label error. One case is left: Python refuses to convert a decimal string longer than 4300 digits and raises ValueError, and the days value has no length bound. A request to /?add=me&days=<4301 or more digits> that carries a valid operator session therefore ends in an unhandled exception. The response is a bare 500 'Internal Server Error' without the security headers the middleware normally adds, and the server logs a traceback. The effect stays within that one response: nothing is stored, the next request renders normally, and other requests are unaffected. Unlike the earlier variant, an anonymous party cannot make this the operator's post-login page, because the value is longer than the 512 characters safe_next accepts and the login form drops it. It is a residual robustness defect of a previously reported root cause, not a way to act across a trust boundary.",
+    "root_cause": "prefill_from_query converts the days query value with int() after checking only isascii() and isdecimal(). The interpreter's integer string conversion limit (default 4300 digits, not changed by the application or the Dockerfile) makes int() raise ValueError for longer all-digit strings, including values that are mostly leading zeros. Neither prefill_from_query nor index catches it, and the app registers no exception handler, so the exception passes through SecurityHeadersMiddleware.dispatch before the headers are set.",
+    "intended_behavior": "A malformed or oversized value in a prefill link is dropped and the page renders with an unfilled duration, as the label handling and the test test_prefill_and_invite_name_with_bad_values_do_not_crash establish for the other bad values.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "whitelister/app.py",
+        "line": 515,
+        "scope": "create_app.index",
+        "description": "GET / with a valid operator session; the handler reads the request's query string. Without a session the handler returns a 303 to /login at line 521 and never reaches the prefill code."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/app.py",
+        "line": 535,
+        "scope": "create_app.index",
+        "description": "prefill_from_query(request, ip) is evaluated inside the template context dict with no exception handling."
+      },
+      {
+        "kind": "sink",
+        "file": "whitelister/app.py",
+        "line": 270,
+        "scope": "create_app.prefill_from_query",
+        "description": "int(raw_days) runs for any ASCII decimal string and raises ValueError when it has more than 4300 digits; the exception leaves the handler and the middleware and becomes a bare 500."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "whitelister/app.py",
+        "line": 270,
+        "description": "The guard is raw_days.isascii() and raw_days.isdecimal() with no length bound before int(raw_days)."
+      },
+      {
+        "file": "whitelister/app.py",
+        "line": 274,
+        "description": "The sibling label conversion catches ValidationError so the page still renders; the days conversion has no equivalent handling."
+      },
+      {
+        "file": "whitelister/app.py",
+        "line": 89,
+        "description": "SecurityHeadersMiddleware.dispatch awaits call_next before adding any header, so an exception from the handler yields a response without CSP, nosniff, frame or no-store headers."
+      },
+      {
+        "file": "whitelister/app.py",
+        "line": 253,
+        "description": "safe_next rejects next values longer than 512 characters, so the anonymous login redirect cannot carry a 4301-digit days value to the post-login page."
+      },
+      {
+        "file": "whitelister/__main__.py",
+        "line": 36,
+        "description": "The HTTP parser accepts request heads up to 16 KiB, so a query value of 4301 digits is within the server's limit (read from source; not exercised over a socket)."
+      },
+      {
+        "file": "tests/test_app.py",
+        "line": 1281,
+        "description": "The regression test covers a 65-character label and two non-ASCII digit values but no long ASCII digit string."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authentication_level",
+        "description": "The request must carry a valid operator session; without one GET / only redirects to /login, and the over-long next value is dropped there."
+      },
+      {
+        "kind": "user_interaction",
+        "description": "The operator has to request the URL within their own session (typed, pasted or followed from the app's origin); the session cookie is SameSite=Strict according to the architecture summary, which was not re-tested here."
+      },
+      {
+        "kind": "environmental_dependency",
+        "description": "The interpreter keeps the default integer string conversion limit of 4300 digits. Observed on the local Python 3.13 environment; the image's Python 3.15 was not run, and the Dockerfile sets no PYTHONINTMAXSTRDIGITS."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "A logged-in operator session requesting the list page with a prefill link whose days value is an over-long digit string.",
+      "payloads": [
+        "GET /?add=me&days=<the digit 7 repeated 4301 times>",
+        "GET /?add=me&days=<4300 zeros followed by 7>"
+      ],
+      "instructions": [
+        "Build the application in-process with dummy settings, an in-memory store and a mock bw-api transport, and drive it through httpx.ASGITransport as a trusted proxy peer.",
+        "Without a session, request /?add=me&days= followed by 4301 digits and follow the redirect to the login page.",
+        "Log in with the dummy password, then request /?add=me&days=7 and the same path with 4300 digits as controls.",
+        "Request the path with 4301 digits and with 4300 zeros followed by 7; record status, body and headers, then request / again and read the entry count.",
+        "Repeat the 4301-digit request with application exceptions re-raised to capture the exception type and frames."
+      ],
+      "observed_result": "Python 3.13.17, limit 4300. Anonymous: 303 to /login, and the login page has no next field. Logged in: days=7 gives 200 with the duration selected; 4300 digits gives 200 with CSP and Cache-Control: no-store and no duration selected; 4301 digits and 4300 zeros plus 7 each give 500 'Internal Server Error' with no Content-Security-Policy and no Cache-Control header. The following GET / is 200 with headers, and the entry count is 0. With exceptions re-raised: ValueError 'Exceeds the limit (4300 digits) for integer string conversion: value has 4301 digits' through app.py:89 dispatch, app.py:535 index, app.py:270 prefill_from_query."
+    },
+    "remediation": {
+      "strategy": "Bound the length of the days value before converting it (a preset never needs more than a few digits) or compare the string with the presets rendered as text, and add a long digit string to the existing regression test. A catch-all exception handler that keeps the security headers on error responses would cover future cases of the same kind.",
+      "code_changes": [
+        {
+          "file_name": "whitelister/app.py",
+          "fixed_code": "        days = None\n        raw_days = q.get(\"days\", \"\")\n        if len(raw_days) <= 4 and raw_days.isascii() and raw_days.isdecimal() and int(raw_days) in settings.duration_presets:\n            days = int(raw_days)\n"
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "low",
+        "reason": "Needs a valid operator session and the operator requesting a crafted URL themselves; the anonymous login-redirect route drops the over-long value."
+      },
+      "impact": {
+        "score": "informational",
+        "reason": "Only the requesting session's own page view fails with a static plain-text 500 and a logged traceback; no data, stored state or other principal is affected, and the next request works."
+      },
+      "overall_severity": "informational"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Every trace and evidence line was re-read in the current source and the result was reproduced independently in the sandbox with boundary controls (4300 vs 4301 digits) and the raising frames captured. Not run on the image's Python 3.15 or over a real socket."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "whitelister/app.py:create_app:redirect-slashes-absolute-http-location",
+    "title": "Trailing-slash redirect answers with an absolute http:// URL that repeats the invitation token path",
+    "description": "The app keeps Starlette's automatic trailing-slash redirect. A path with a trailing slash whose slash-less form matches a route (/i/<anything>/, /login/, /entries/, /invites/ ...) is answered with 307 and an absolute Location built from the ASGI scheme and the Host header. Uvicorn serves plain HTTP with proxy_headers=False, so behind a TLS-terminating proxy the scheme is always http: https://host/i/<token>/ is answered with Location: http://host/i/<token>. The redirect is produced by the router before any handler runs, so it needs no valid token and no session, and it ignores COOKIE_SECURE, PUBLIC_URL and X-Forwarded-Proto. Reproduced locally in-process: this is the response the app hands to the proxy. Whether a client then really sends the token path in cleartext is not established: it needs (1) a link with a trailing slash, which the app itself never produces, (2) a client without HSTS state for the host, and (3) a proxy that passes the Location header unchanged. On top of that an on-path observer is needed for any harm. With HSTS=yes the app adds the HSTS header to the same 307, which protects browsers that honour it, but the Location stays http://.",
+    "claimed_root_cause": "create_app builds FastAPI without redirect_slashes=False, so Starlette's Router answers a non-matching path whose slash variant matches with RedirectResponse(URL(scope=...)), an absolute URL from the scope scheme and the Host header. The scope scheme is http by construction (uvicorn without TLS, proxy_headers=False), and this redirect does not go through public_origin, which forces https when COOKIE_SECURE is on.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "whitelister/app.py",
+        "line": 754,
+        "scope": "create_app.invite_page route registration",
+        "description": "GET /i/{token} is registered without a trailing slash; an anonymous request for /i/<token>/ (likewise /login/, /entries/, /invites/) matches no route, while its slash-less form does."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/__main__.py",
+        "line": 29,
+        "scope": "main",
+        "description": "uvicorn.run serves plain HTTP with proxy_headers=False and forwarded_allow_ips=[], so the ASGI scope scheme is 'http' for every request, also for one that reached the proxy over https; X-Forwarded-Proto is ignored."
+      },
+      {
+        "kind": "sink",
+        "file": "whitelister/app.py",
+        "line": 152,
+        "scope": "create_app",
+        "description": "FastAPI(...) is built with the default redirect_slashes=True: the router returns 307 with Location '<scope scheme>://<Host><path without slash>', an absolute http:// URL that repeats the token path."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "whitelister/app.py",
+        "line": 152,
+        "description": "FastAPI is constructed with docs disabled but without redirect_slashes=False. Verifier's own sandboxed in-process check (httpx ASGITransport, scheme http, Host wl.example, default COOKIE_SECURE=yes): GET /i/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB/ gave 307 with Location http://wl.example/i/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB and no Strict-Transport-Security header; POST /login/ and GET /login/ gave 307 to http://wl.example/login; GET /entries/ gave 307 to http://wl.example/entries. The same Location came back with X-Forwarded-Proto: https and with PUBLIC_URL=https://wl.example. With HSTS=yes the 307 carried Strict-Transport-Security, the Location was still http://. The token in the check was a dummy that matches no invitation (the slash-less path answers 404), so the redirect does not depend on a valid token."
+      },
+      {
+        "file": "whitelister/app.py",
+        "line": 281,
+        "description": "public_origin uses https whenever COOKIE_SECURE is on (or PUBLIC_URL); this is the scheme the app intends for its own links. The framework redirect does not use it."
+      },
+      {
+        "file": "whitelister/config.py",
+        "line": 231,
+        "description": "HSTS defaults to off (also HSTS=no in .env.example), so by default the app's own 307 carries no HSTS header; protection of the follow-up request then depends on what the proxy adds."
+      },
+      {
+        "file": "whitelister/app.py",
+        "line": 106,
+        "description": "The security-headers middleware wraps the router, so with HSTS=yes the header is also set on the redirect. It sets no rule for the Location header."
+      }
+    ],
+    "blockers": [
+      "Whether the deployed BunkerWeb adds Strict-Transport-Security to this 307 (or the host is already known as HSTS to the client) is a deployment fact outside this repository; with it, browsers upgrade the redirect and nothing goes out in cleartext.",
+      "Whether BunkerWeb passes the upstream Location header unchanged, and whether it accepts the following cleartext request on port 80 for this host, is a deployment fact; the compose example sets no rule for either.",
+      "Whether a link with a trailing slash ever reaches a guest or the operator is not visible in source: the app never emits one (links come from public_origin plus a slash-less path), so a person, a messenger, a mail client or an attacker who hands over a /login/ link has to add the slash.",
+      "Any harm needs an observer on the network path between the client and the proxy at the moment of the cleartext request; this cannot be observed locally."
+    ],
+    "validation_plan": {
+      "local": "In-process with httpx.ASGITransport, base URL scheme http (as uvicorn reports it), default settings and dummy secrets: GET /i/<any 32 characters>/ and POST /login/, do not follow redirects, read status and Location. Current result: 307 with an absolute http:// Location. Regression case after the fix (redirect_slashes=False on the FastAPI constructor): both requests answer 404 and no response of the app carries an absolute http:// Location.",
+      "deployment": "The owner sends, from their own machine and with a non-browser client that does not follow redirects, GET https://<own host>/i/x/ and GET https://<own host>/login/ through BunkerWeb (x is a dummy, no real invitation token), and records the status, the Location header and whether Strict-Transport-Security is present on that response. Read-only; nothing is changed and no real token is used."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "whitelister/app.py:current_session:session-survives-password-change",
+    "title": "Operator sessions stay valid after the shared password is changed",
+    "description": "Sessions are rows in the SQLite file under DATA_DIR, referenced by a cookie signed with a secret that is either persisted in the same directory (session.key) or set separately (SESSION_SECRET). Neither is tied to the configured password. When the container operator replaces WHITELISTER_PASSWORD or WHITELISTER_PASSWORD_HASH and restarts, for example because the shared password leaked or a co-operator should lose access, every session issued under the old password keeps full operator authority until its own lifetime ends (SESSION_HOURS, default 12 h, configurable up to 720 h). In that window the holder can still change the whitelist, including adding entries without expiry. The README says rotating SESSION_SECRET logs everyone out, but with the default generated key that means deleting a file in the data volume, and nothing in the password-change path does this or says it is needed. The single shared password is the only way to withdraw an operator's access, so this is the product's only revocation path.",
+    "root_cause": "Session validity is decided only by the cookie signature and a row in the persistent sessions table (current_session, session_valid). No credential generation is stored with the session or checked at start-up, so changing the configured password neither purges nor invalidates existing rows.",
+    "intended_behavior": "After the operator password is changed, sessions established with the previous password are no longer accepted; the holder has to log in with the new password.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "whitelister/app.py",
+        "line": 471,
+        "scope": "create_app.login",
+        "description": "POST /login with the old password succeeds and reaches session creation."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/app.py",
+        "line": 499,
+        "scope": "create_app.login",
+        "description": "The new session id is written to the persistent sessions table with an expiry of SESSION_HOURS; nothing about the password it was issued under is stored."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/config.py",
+        "line": 178,
+        "scope": "load_settings",
+        "description": "On restart with a new password the signing secret is re-read unchanged from DATA_DIR/session.key (or from SESSION_SECRET, line 172); the password values read at lines 160-161 play no part in it."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/entries.py",
+        "line": 144,
+        "scope": "EntryStore.__init__",
+        "description": "The sessions table is created only if missing; existing rows survive the restart."
+      },
+      {
+        "kind": "sink",
+        "file": "whitelister/app.py",
+        "line": 178,
+        "scope": "create_app.current_session",
+        "description": "The pre-change cookie verifies and its row is still present, so the request is treated as a logged-in operator on every route, including require_post mutations."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "whitelister/app.py",
+        "line": 176,
+        "description": "current_session checks only the signed cookie and store.session_valid."
+      },
+      {
+        "file": "whitelister/entries.py",
+        "line": 446,
+        "description": "session_valid looks up sid and expires_at only."
+      },
+      {
+        "file": "whitelister/app.py",
+        "line": 119,
+        "description": "PasswordChecker is built from the settings independently of the session codec (line 117) and the store; no code compares the current credential with the one sessions were issued under."
+      },
+      {
+        "file": "whitelister/config.py",
+        "line": 222,
+        "description": "SESSION_HOURS defaults to 12 and may be set up to 720 (30 days), which bounds the window."
+      },
+      {
+        "file": "README.md",
+        "line": 60,
+        "description": "Documentation states that logging out ends a session and that rotating SESSION_SECRET logs everyone out; a password change is not mentioned as needing it."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authentication_level",
+        "description": "The actor already holds a valid session cookie obtained with the previous password (a former co-operator, or someone who used a leaked password before it was changed)."
+      },
+      {
+        "kind": "system_configuration",
+        "description": "The password is changed without also changing SESSION_SECRET or deleting DATA_DIR/session.key, and DATA_DIR is kept across the restart (the documented volume setup)."
+      },
+      {
+        "kind": "timing_dependency",
+        "description": "The session is used before its own lifetime ends: SESSION_HOURS after login, 12 h by default, up to 30 days if configured."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "A holder of a session cookie that was issued before the operator changed the shared password.",
+      "payloads": [
+        "Cookie: wl_session=<cookie issued under the old password>",
+        "POST /entries  network=192.0.2.55&label=after-rotation&duration=forever&_csrf=<token from the page fetched with that cookie>"
+      ],
+      "instructions": [
+        "Build the app in-process with a file-backed store in an empty DATA_DIR, no SESSION_SECRET (key generated into DATA_DIR/session.key), COOKIE_SECURE=no and dummy password A; log in and keep the cookie and the page's CSRF token.",
+        "Close the store and build the app again on the same DATA_DIR with a different dummy password B.",
+        "POST /login with password A and observe the status.",
+        "Send GET / and then POST /entries with the kept cookie and token and read the entries table.",
+        "Delete DATA_DIR/session.key, build the app once more and repeat GET / with the kept cookie."
+      ],
+      "observed_result": "Independent sandbox run: the second build loaded the same generated signing secret. The old password was refused (401), yet the pre-change cookie returned the operator page (200, with CSRF form) and POST /entries answered 303 to / and the entries table held 192.0.2.55 labelled after-rotation with expires_at NULL. Only after session.key was also removed did the cookie get 303 to /login."
+    },
+    "remediation": {
+      "strategy": "Tie stored sessions to the configured credential: keep a keyed fingerprint of the current password or password hash in the meta table and drop all session rows at start-up when it differs. Regression test: log in, rebuild the app on the same data directory with another password, and assert the old cookie is redirected to /login. Also state in the README that a password change ends all sessions.",
+      "code_changes": [
+        {
+          "file_name": "whitelister/app.py",
+          "fixed_code": "import hmac  # next to the existing `import hashlib`\n\n    # in create_app, after `codec = SessionCodec(...)`\n    credential = (settings.password_hash or settings.password or \"\").encode(\"utf-8\")\n    credential_tag = hmac.new(settings.session_secret, b\"credential:\" + credential, hashlib.sha256).hexdigest()\n    if store.meta_get(\"credential_tag\") != credential_tag:\n        store.sessions_clear()  # the password changed (or first start): nobody stays logged in\n        store.meta_set(\"credential_tag\", credential_tag)\n"
+        },
+        {
+          "file_name": "whitelister/entries.py",
+          "fixed_code": "    def sessions_clear(self) -> None:\n        with self._lock:\n            self._conn.execute(\"DELETE FROM sessions\")\n"
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "low",
+        "reason": "Needs a session obtained with the old password and use within the remaining session lifetime; the operator must change the password without rotating the session secret, which is the natural way to do it."
+      },
+      "impact": {
+        "score": "medium",
+        "reason": "Operator authority over the whitelist continues for the rest of the session lifetime after access was meant to be withdrawn; entries added then have no expiry and stay after the session ends. Observed: one permanent dummy entry written."
+      },
+      "overall_severity": "low"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Every trace and evidence line was checked against the source, and the result was reproduced independently in the sandbox with a file-backed data directory; removing the generated key was shown to be a separate manual step."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "whitelister/app.py:invite_redeem/EntryStore.upsert:unlimited-link-fills-shared-entry-cap",
+    "title": "An unlimited invitation link can fill the shared 5000-entry list and block the operator's adds and every other link",
+    "description": "A link created with the 'unlimited' address choice (max_addresses=0) has no budget, no rate limit on successful redemptions and no share of the list. Every redemption from an address new to the list (one IPv4 host or one IPv6 /64) inserts an entry and awaits one bw-api refresh call that is not debounced. The only bound is the global cap of 5000 rows in EntryStore.upsert, which the operator and all other links share. A holder of such a link who can send requests from 5000 distinct networks as the app resolves them (a routed IPv6 /48 has 65536 /64s) fills the list. After that the operator's add is refused with 'The list is full' (also when the network already exists and would only be updated), import uses the same upsert, and guests of other links get the 503 'failed' page. Revoking the link stops further inserts but does not remove its entries; they count against the cap until they expire and are purged after the retention period, or until the operator deletes them one by one (there is no bulk removal). Existing entries, extending them and the served list are not affected. The observation used an in-process cap of 6 as a stand-in for 5000; the 5000 case was not run, and any rate limiting by the BunkerWeb front proxy is outside the repository.",
+    "root_cause": "The per-link budget is the only limit on new addresses and 0 disables it: Invite.remaining is None, so the check `seen is None and invite.remaining == 0` in invite_status never fires. EntryStore.upsert checks one COUNT(*) over all rows before any insert or update, so one link's entries use up the capacity the operator and other links depend on. invite_throttle counts only failed token lookups, and invite redemptions call refresh_after_change directly instead of the debounced Syncer.",
+    "intended_behavior": "A single invitation link, including an unlimited one, should not be able to take list capacity away from the operator or from other links, and should not be able to trigger an unbounded number of BunkerWeb refreshes in a short time.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "whitelister/app.py",
+        "line": 768,
+        "scope": "invite_redeem",
+        "description": "POST /i/{token} from a link holder without login; only same_origin and a valid open token (open_invite) are required."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/app.py",
+        "line": 308,
+        "scope": "invite_status",
+        "description": "The budget check compares invite.remaining with 0; for max_addresses=0 remaining is None, so an address new to the link is always 'ready'."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/app.py",
+        "line": 789,
+        "scope": "invite_redeem",
+        "description": "An address with no existing entry is inserted with store.upsert; nothing limits how many or how fast per link."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/app.py",
+        "line": 814,
+        "scope": "invite_redeem",
+        "description": "Each changed redemption awaits refresh_after_change, which calls client.trigger_refresh once per request (app.py:349-358), not debounced."
+      },
+      {
+        "kind": "sink",
+        "file": "whitelister/entries.py",
+        "line": 242,
+        "scope": "EntryStore.upsert",
+        "description": "The global COUNT(*) >= _MAX_ENTRIES (5000) check raises too_many_entries for every caller once the table is full, including the operator's add at app.py:592, import at app.py:893 and other links' redemptions."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "whitelister/entries.py",
+        "line": 127,
+        "description": "Invite.remaining returns None when max_addresses is 0."
+      },
+      {
+        "file": "whitelister/templates/index.html",
+        "line": 208,
+        "description": "The create-link form offers 0 as 'unlimited' (INVITE_ADDRESS_CHOICES, app.py:67); the default selection is 3."
+      },
+      {
+        "file": "whitelister/app.py",
+        "line": 123,
+        "description": "invite_throttle is the only throttle on the invite path; open_invite records a failure only for unknown or closed tokens (app.py:738-742)."
+      },
+      {
+        "file": "whitelister/entries.py",
+        "line": 242,
+        "description": "The entry cap is one global count taken before the insert-or-update, so it also refuses an update of an existing network."
+      },
+      {
+        "file": "whitelister/app.py",
+        "line": 592,
+        "description": "The operator's add uses the same upsert and shows the cap error as a flash."
+      },
+      {
+        "file": "whitelister/entries.py",
+        "line": 20,
+        "description": "_MAX_ENTRIES = 5000 is a module constant with no per-link or per-source share."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "system_configuration",
+        "description": "The operator has created a link with 'unlimited' addresses (or several open links whose budgets together reach the cap; the handler accepts budgets up to 1000 and the store allows up to its open-link maximum)."
+      },
+      {
+        "kind": "authentication_level",
+        "description": "The requester holds that link's URL; no login is needed."
+      },
+      {
+        "kind": "network_routing",
+        "description": "The requester can originate requests from about 5000 distinct addresses as resolved by the app (distinct IPv4 hosts or IPv6 /64s, for example a routed /48), and the front proxy does not rate-limit or block POST /i/ requests. That proxy behaviour is not visible in the repository."
+      },
+      {
+        "kind": "data_state",
+        "description": "IPv6 /64 entries must pass the entry policy; the default MIN_PREFIX_V6=48 accepts them."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "Holder of an unlimited invitation link, not logged in, sending POST /i/{token} from different /64 networks.",
+      "payloads": [
+        "POST /i/<token> with headers Host: wl.example, Origin: http://wl.example, Sec-Fetch-Site: same-origin, X-Forwarded-For: 2001:db8:77:<n>::1 for n = 0..7, sent through the trusted proxy peer 10.0.0.5"
+      ],
+      "instructions": [
+        "Build the app in-process (ASGI transport, in-memory store, mocked BunkerWeb API, TRUSTED_PROXIES=10.0.0.0/8) and set whitelister.entries._MAX_ENTRIES to 6 in the harness process as a stand-in for 5000.",
+        "Log in as the operator and create one link with max_addresses=0 and a second link with max_addresses=3.",
+        "Send the redemption POST for the unlimited link from 8 different /64 networks.",
+        "Send one redemption POST for the second link from 198.51.100.7.",
+        "As the operator, POST /entries for the new address 192.0.2.10 and for one network that is already listed, and load the page after each.",
+        "Revoke the unlimited link, delete one of its entries and repeat the add for 192.0.2.10."
+      ],
+      "observed_result": "With the stand-in cap of 6 (source value 5000): the 8 redemptions returned 200 six times, then 503 twice; 6 entries were stored, the unlimited link showed used=6 and the mocked bw-api received 6 cache DELETE calls. The other link's guest got 503. The operator's add for 192.0.2.10 returned 303 with the flash 'The list is full' and was not stored; the operator's update of an already listed network was refused with the same flash. After revoking the link and deleting one entry the operator's add succeeded."
+    },
+    "remediation": {
+      "strategy": "Give every link a finite ceiling and keep capacity for the operator: treat 'unlimited' as a fixed maximum (for example 100 addresses), count a link's live entries against a per-link share of the cap, and reserve headroom so invite redemptions are refused before the operator's own adds are. Add a per-link rate limit for new addresses (a few per minute) and route invite-driven refreshes through the debounced Syncer instead of one bw-api call each. Let upsert skip the cap check when the network already exists, and give the operator a way to remove all entries a link added. Regression case: an unlimited link redeemed from more addresses than its ceiling returns 409, and an operator add still succeeds."
+    },
+    "severity": {
+      "likelihood": {
+        "score": "low",
+        "reason": "Needs an operator-issued unlimited link (not the default choice), a holder or someone who obtained the URL willing to abuse it, and thousands of distinct source networks reaching the app through the front proxy."
+      },
+      "impact": {
+        "score": "low",
+        "reason": "Availability of list management only: new adds, updates through the add form, imports and other guests' redemptions fail until the operator revokes the link and deletes entries; existing entries, extensions and the served list are unaffected. Each inserted entry is also a whitelisted network of the holder's own, which the link grants by design. Observed with a stand-in cap of 6."
+      },
+      "overall_severity": "low"
+    },
+    "confidence": {
+      "score": "medium",
+      "reason": "The path and the shared cap are plain in source and the effect was reproduced locally with a reduced cap; the full 5000 case and any limiting by the BunkerWeb front proxy were not observed."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "whitelister/app.py:invite_status:removed-tombstone-lifted-by-any-active-entry",
+    "title": "A link blocked by the operator's removal can lengthen the address again once another link re-adds it",
+    "description": "When the operator deletes an address that an invitation link had added, that link is meant to stay blocked for the address until the operator lists it by hand again. The block is lifted by any unexpired entry for the address, including one created through a different invitation link. A guest who holds two open links can use the second link (which has not seen the address and has budget left) to add it again, and then use the blocked first link to lengthen that entry to the first link's own access period. In the local run the entry went from the second link's 1 day to the first link's 14 days. The block returns once that entry ends, and the second link alone already re-admits the address for its own period, so the gain is limited to the difference between the two periods.",
+    "root_cause": "invite_status returns 'removed' only for `seen == \"removed\" and not active`, and `active` is true for any unexpired entry of the network, whoever created it. The removal mark is stored per link and network and is set only on links that had already seen the address, so another link can supply the active entry; the redeem path then lengthens it with set_expiry.",
+    "intended_behavior": "After the operator removes an address a link had added, that link must not add or lengthen the address again unless the operator lists it by hand (README.md: 'the link remembers that ... listing the address by hand again lifts the block').",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "whitelister/app.py",
+        "line": 769,
+        "scope": "invite_redeem",
+        "description": "POST /i/{token} from the removed address with the blocked link, after a second link added the address again."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/entries.py",
+        "line": 407,
+        "scope": "EntryStore.invite_address_state",
+        "description": "Returns 'removed' for this link and network because removed_at is set."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/app.py",
+        "line": 306,
+        "scope": "invite_status",
+        "description": "The 'removed' result is skipped because an unexpired entry exists; the function falls through to 'ready'."
+      },
+      {
+        "kind": "sink",
+        "file": "whitelister/app.py",
+        "line": 792,
+        "scope": "invite_redeem",
+        "description": "set_expiry lengthens the entry to now plus the blocked link's access_days."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "whitelister/app.py",
+        "line": 306,
+        "description": "The removed state requires that no unexpired entry exists; who created that entry is not considered."
+      },
+      {
+        "file": "whitelister/entries.py",
+        "line": 279,
+        "description": "Deletion stamps removed_at only on links that already saw the network, so a link that has not seen it can still add it."
+      },
+      {
+        "file": "README.md",
+        "line": 232,
+        "description": "Documented rule: listing the address by hand again is what lifts the block."
+      },
+      {
+        "file": "tests/test_app.py",
+        "line": 1228,
+        "description": "The existing test covers only a single link; no test has a second link re-adding the removed address."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authentication_level",
+        "description": "The guest holds two open invitation links for the same installation; no login is needed."
+      },
+      {
+        "kind": "data_state",
+        "description": "The operator removed the guest's address after the first link added it and left both links open; the second link has not seen that address and has budget left; the first link's access period is at least one hour longer than what remains on the entry the second link created."
+      },
+      {
+        "kind": "network_routing",
+        "description": "The guest still connects from the removed address (same IPv4 address or IPv6 /64)."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "A guest who holds two open invitation links and whose address the operator removed from the list.",
+      "payloads": [
+        "POST /i/<token of link B> from the removed address",
+        "POST /i/<token of link A> from the removed address"
+      ],
+      "instructions": [
+        "In the in-process test app, create link A (14 days per address) and redeem it from 198.51.100.5.",
+        "As operator, delete the entry for 198.51.100.5 and confirm that a POST with link A from that address returns 409.",
+        "Create link B (1 day per address, budget 1) and POST it from 198.51.100.5.",
+        "POST link A again from 198.51.100.5 and read the entry's expiry from the store."
+      ],
+      "observed_result": "In the sandboxed in-process run: after the operator's delete, link A returned 409 and no entry existed. Link B returned 200 and created the entry ending 2026-11-26 (1 day). Link A then returned 200 and the same entry's end moved to 2026-12-09 (14 days), while link A's removal mark stayed set. After the entry's end was set to the past, link A returned 409 again."
+    },
+    "remediation": {
+      "strategy": "Make the removal mark authoritative for the link: return 'removed' whenever the link's row for the network has removed_at set, and clear removed_at only when the operator lists the address by hand (the /entries add path and import). Add a regression test in which a second link re-adds a removed address and the first link still gets 409, and one in which a hand-made entry lifts the block.",
+      "code_changes": [
+        {
+          "file_name": "whitelister/app.py",
+          "fixed_code": "        # invite_status\n        if seen == \"removed\":\n            return \"removed\", existing\n\n        # add_entry (and the import path), after store.upsert(text, ...):\n        store.invite_clear_removed(text)"
+        },
+        {
+          "file_name": "whitelister/entries.py",
+          "fixed_code": "    def invite_clear_removed(self, network: str) -> None:\n        \"\"\"The operator listed the address by hand again: links may renew it.\"\"\"\n        with self._lock:\n            self._conn.execute(\"UPDATE invite_addresses SET removed_at = NULL WHERE network = ?\", (network,))"
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "low",
+        "reason": "Needs a guest with two open links whose access periods differ, after an operator removal that left both links open."
+      },
+      "impact": {
+        "score": "low",
+        "reason": "Only the guest's own address stays listed for the first link's period instead of the second link's shorter one; no other address or data is affected, and the second link alone already re-admits the address."
+      },
+      "overall_severity": "low"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Every trace line was checked in source, and an independent sandboxed in-process run showed the 409, the re-add through the second link, and the extension through the blocked link."
+    }
+  },
+  {
+    "verdict": "needs_validation",
+    "fingerprint": "whitelister/app.py:ips_txt:direct-gate-ignores-trusted-proxies-and-client-ip-header",
+    "title": "/ips.txt direct-request gate ignores TRUSTED_PROXIES and the configured CLIENT_IP_HEADER",
+    "description": "GET /ips.txt serves the active whitelist when the TCP peer is inside LIST_ALLOWED_NETWORKS, the optional LIST_TOKEN matches, and none of five fixed header names (x-forwarded-for, forwarded, x-real-ip, x-forwarded-host, x-forwarded-proto) is present. The gate does not consult settings.trusted_proxies or settings.client_ip_header, although the rest of the app uses exactly those two settings to decide whether a request was relayed. Re-derived at 0e90ff4 and reproduced in the sandbox (in-process ASGI, dummy secrets, empty list, no network) with TRUSTED_PROXIES=10.20.30.2/32, LIST_ALLOWED_NETWORKS=10.20.30.0/24 and LIST_TOKEN unset: a request from peer 10.20.30.2 with no header, or with only CF-Connecting-IP: 198.51.100.9, returns 200 and the list header line, both with the default CLIENT_IP_HEADER and with CLIENT_IP_HEADER=CF-Connecting-IP; in the latter case /login renders 198.51.100.9 as the client for the same request shape. Any of the five listed names gives 403, a public peer gives 403, and with LIST_TOKEN set the same requests give 403. This establishes the inconsistency only. Whether an anonymous internet client can reach the 200 state depends on the reverse proxy in front omitting all five header names and on the operator leaving LIST_TOKEN empty; the maintained example sets a token and publishes the app through BunkerWeb 1.6.17, whose generated proxy headers are not in the repository. Effect if reachable: read-only disclosure of the whitelisted networks, plus an update of the 'last fetched' timestamp shown to the operator.",
+    "claimed_root_cause": "ips_txt (whitelister/app.py:450-453) checks the raw TCP peer against LIST_ALLOWED_NETWORKS and calls has_forwarding_headers (whitelister/security.py:277-278), a fixed list of five header names. It neither refuses a peer inside settings.trusted_proxies nor treats settings.client_ip_header as proxy metadata, so the 'direct request' decision depends on what the proxy happens to add rather than on the app's own proxy configuration.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "whitelister/app.py",
+        "line": 447,
+        "scope": "create_app.ips_txt",
+        "description": "GET /ips.txt route, no session; the whole app is published through the ingress in the example (REVERSE_PROXY_URL=/), so a relayed request arrives from the trusted proxy's address."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/app.py",
+        "line": 450,
+        "scope": "create_app.ips_txt",
+        "description": "peer is the raw socket address (uvicorn proxy_headers=False); the trusted proxy's address is a valid peer."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/security.py",
+        "line": 278,
+        "scope": "has_forwarding_headers",
+        "description": "Only five fixed header names count as proof of a relayed request; trusted_proxies and client_ip_header are not inputs."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/app.py",
+        "line": 453,
+        "scope": "create_app.ips_txt",
+        "description": "Single 403 gate: peer parses, no listed header, peer in list_allowed_networks, token_ok (true when LIST_TOKEN is unset, line 452)."
+      },
+      {
+        "kind": "sink",
+        "file": "whitelister/app.py",
+        "line": 458,
+        "scope": "create_app.ips_txt",
+        "description": "The active whitelist is returned as text/plain; line 457 also stamps list_fetched_at."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "whitelister/app.py",
+        "line": 453,
+        "description": "Gate uses the TCP peer, has_forwarding_headers, list_allowed_networks and the optional token only."
+      },
+      {
+        "file": "whitelister/security.py",
+        "line": 278,
+        "description": "Fixed tuple of five lowercase header names."
+      },
+      {
+        "file": "whitelister/app.py",
+        "line": 173,
+        "description": "client_ip resolves the same request via resolve_client_ip with trusted_proxies and client_ip_header, so the two decisions can disagree (observed: /login shows 198.51.100.9 while /ips.txt answers 200)."
+      },
+      {
+        "file": "whitelister/config.py",
+        "line": 232,
+        "description": "LIST_ALLOWED_NETWORKS defaults to all private, loopback and ULA ranges (config.py:18-25), which normally contain the reverse proxy."
+      },
+      {
+        "file": "whitelister/config.py",
+        "line": 214,
+        "description": "LIST_TOKEN is optional; empty means no token."
+      },
+      {
+        "file": "whitelister/config.py",
+        "line": 212,
+        "description": "CLIENT_IP_HEADER lets the operator name a custom client-address header that /ips.txt does not treat as a forwarding header."
+      },
+      {
+        "file": ".env.example",
+        "line": 24,
+        "description": "Example LIST_ALLOWED_NETWORKS=10.20.30.0/24 contains the ingress 10.20.30.2 named in TRUSTED_PROXIES (line 15); line 27 ships a token placeholder that config rejects, so the example deployment has a token and is not affected as shipped."
+      },
+      {
+        "file": "docker-compose.example.yml",
+        "line": 40,
+        "description": "REVERSE_PROXY_URL=/ publishes every path, /ips.txt included, through BunkerWeb at 10.20.30.2 (line 53)."
+      },
+      {
+        "file": "README.md",
+        "line": 70,
+        "description": "Documented design: any forwarding header means 'came through a proxy'; this presumes the proxy always adds one of the five names."
+      },
+      {
+        "file": "tests/test_app.py",
+        "line": 356,
+        "description": "Tests cover XFF/Forwarded refusal, outsider refusal and the token; none covers a TRUSTED_PROXIES peer without a listed header or a CLIENT_IP_HEADER-only request."
+      }
+    ],
+    "blockers": [
+      "The request headers the deployed reverse proxy adds are not source-visible. The path is live only if the proxy relays a request without X-Forwarded-For, Forwarded, X-Real-IP, X-Forwarded-Host and X-Forwarded-Proto. BunkerWeb 1.6.17's generated reverse-proxy configuration (and any REVERSE_PROXY_HEADERS or CDN customisation) is not in the repository and may not be fetched or run here; a stock nginx-style reverse proxy usually adds at least one of these names, which would close the path.",
+      "The path also needs LIST_TOKEN unset in the running deployment and the proxy address inside LIST_ALLOWED_NETWORKS. Both are deployment facts; the maintained example sets a token."
+    ],
+    "validation_plan": {
+      "local": "Done by v3-8 in the sandbox (scratch check-v38-cf.json, check-v38-default.json, check-v38-token.json; not promoted, re-run to reproduce): create_app(load_settings()) with dummy secrets, TRUSTED_PROXIES=10.20.30.2/32, LIST_ALLOWED_NETWORKS=10.20.30.0/24, LIST_TOKEN unset, httpx.ASGITransport client=(10.20.30.2, port). GET /ips.txt with no header or only CF-Connecting-IP returns 200; with any of the five listed names 403; peer 203.0.113.9 403; LIST_TOKEN set 403. A regression test for the fix should expect 403 for any request whose peer is inside TRUSTED_PROXIES or that carries the configured CLIENT_IP_HEADER. Nothing further can be learned locally about the real proxy.",
+      "deployment": "Owner only, on their own stack, read-only: (1) check whether LIST_TOKEN is non-empty in the running container; if it is, the path is closed. (2) From outside, request https://<public host>/ips.txt without a token and note the status; 403 is expected. (3) Inspect the BunkerWeb-generated server block for the whitelister service (and REVERSE_PROXY_HEADERS / CDN settings) and confirm that at least one of X-Forwarded-For, X-Real-IP, X-Forwarded-Proto, X-Forwarded-Host or Forwarded is set on every proxied request. A 200 in (2) confirms the finding. Source fix regardless: in ips_txt refuse peers inside settings.trusted_proxies and treat settings.client_ip_header as a forwarding header."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "whitelister/entries.py:EntryStore.__init__:removed_at-migration-no-backfill",
+    "title": "Addresses the operator removed before the upgrade to 0.4.3+ can still be re-added through the same open invitation link",
+    "description": "Version 0.4.3 added invite_addresses.removed_at so that an address the operator takes off the list cannot be put back by the link that added it. Existing databases get the column without a backfill. For a link that is still open at upgrade time, an address whose entry the operator deleted on 0.4.1/0.4.2 keeps removed_at NULL, is read as 'known', and because no entry exists the invitation page reports 'ready': one POST from that address re-creates the whitelist entry for the link's full access period, although the link's budget is already spent. This is the leftover of the run-2 finding fixed in 0.4.3, limited to rows written before the upgrade. The window ends when the link expires or is revoked (links live at most 30 days); deletions made on the current version are refused with 409.",
+    "root_cause": "EntryStore.__init__ migrates with a bare ALTER TABLE invite_addresses ADD COLUMN removed_at and leaves every existing row at NULL; invite_address_state maps NULL to 'known', and invite_status returns 'ready' for 'known' with no active entry (the state meant for an entry that ran out). The older schema recorded nothing in invite_addresses on deletion, so the migration default classifies pre-upgrade operator deletions as expired entries, even though the events table may still hold the 'delete' row.",
+    "intended_behavior": "README (invitation section) and CHANGELOG 0.4.3: if the operator removes an address a link had added, the link remembers that, the slot stays spent and the button refuses (HTTP 409) until the operator lists the address by hand again. For links still open at upgrade time this should also hold for removals made before the upgrade, or the upgrade notes should tell the operator to revoke such links.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "whitelister/app.py",
+        "line": 768,
+        "scope": "invite_redeem",
+        "description": "POST /i/{token} from the holder of a still-open link, arriving (via the trusted proxy) from the address the operator had removed before the upgrade; open_invite and same_origin pass for a legitimate holder."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/entries.py",
+        "line": 201,
+        "scope": "EntryStore.__init__",
+        "description": "On first start of the new version the column removed_at is added; existing invite_addresses rows keep NULL, with no backfill from the events table or from missing entries."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/entries.py",
+        "line": 416,
+        "scope": "EntryStore.invite_address_state",
+        "description": "A NULL removed_at is reported as 'known'."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/app.py",
+        "line": 312,
+        "scope": "invite_status",
+        "description": "seen == 'known' with no active entry falls through to 'ready'; the budget check at line 308 applies only when the address is new to the link."
+      },
+      {
+        "kind": "sink",
+        "file": "whitelister/app.py",
+        "line": 789,
+        "scope": "invite_redeem",
+        "description": "store.upsert re-creates the whitelist entry for now + access_days as invite:<name>; the list refresh is then requested."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "whitelister/entries.py",
+        "line": 200,
+        "description": "Migration: column added only when missing, no UPDATE of existing rows (the updated_at migration at lines 158-160 does backfill)."
+      },
+      {
+        "file": "whitelister/entries.py",
+        "line": 279,
+        "description": "Only deletions executed by the current code stamp removed_at; the 0.4.2 schema (commit 4ce6e0d, entries.py:191-197) had no such column."
+      },
+      {
+        "file": "whitelister/app.py",
+        "line": 306,
+        "description": "The refusal branch requires seen == 'removed'; legacy rows never reach it."
+      },
+      {
+        "file": "README.md",
+        "line": 230,
+        "description": "Stated contract: a removed address is remembered by the link and not put back."
+      },
+      {
+        "file": "CHANGELOG.md",
+        "line": 75,
+        "description": "0.4.3 states that removing an invite-added entry now sticks (HTTP 409); no upgrade note about links opened on earlier versions."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authentication_level",
+        "description": "The requester holds the invitation link (bearer capability) and comes from the address (IPv4 host or IPv6 /64) that this link had added earlier."
+      },
+      {
+        "kind": "data_state",
+        "description": "The database was created by 0.4.1 or 0.4.2, the operator deleted a link-added entry on that version, did not revoke the link, and the link is still within its validity after the upgrade."
+      },
+      {
+        "kind": "timing_dependency",
+        "description": "The exposure ends when the link expires or is revoked, at the latest 30 days after the link was created."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "Invitation-link holder whose address the operator removed from the whitelist before upgrading from 0.4.2.",
+      "payloads": [
+        "SQLite file with the 0.4.2 schema (invite_addresses without removed_at): one open invite (access_days 14, max_addresses 1), one invite_addresses row for 198.51.100.50, no entries row, one events row action='delete' for 198.51.100.50",
+        "POST /i/<token> with X-Forwarded-For: 198.51.100.50 through the trusted proxy peer, Host wl.example, Origin http://wl.example, Sec-Fetch-Site: same-origin"
+      ],
+      "instructions": [
+        "Create the legacy SQLite file with dummy data as described in the payload.",
+        "Open it with the current EntryStore and build the app in-process (ASGI transport, no network, BunkerWeb client mocked).",
+        "Send GET, then POST /i/<token> as the guest from 198.51.100.50 and read the entries table.",
+        "Control: delete the re-created entry with the current EntryStore.delete and repeat the POST."
+      ],
+      "observed_result": "Sandbox run (verifier v3-9, hand-built 0.4.2-schema database): after opening, removed_at exists and is NULL, invite_address_state = 'known', no entry. GET 200 with no change; POST 200 and entries now holds 198.51.100.50, label 'Legacy', created_by 'invite:Legacy', expiry 14.0 days ahead, while the link still counts 1 of 1 addresses. Control after EntryStore.delete on the current version: state 'removed', POST 409, no entry."
+    },
+    "remediation": {
+      "strategy": "Backfill once when the column is added: mark as removed every legacy invite_addresses row that has no entry row and whose latest history event for that network is 'delete'. The history keeps only 200 rows, so this is best effort; a stricter fail-closed variant marks every legacy row without an entry row (the operator lifts it by listing the address by hand, at the cost of also blocking renewal of entries that merely ran out). Add a regression test that opens a 0.4.2-schema database and expects 409. Additionally or alternatively, state in the 0.4.3 upgrade notes that links whose addresses were removed earlier should be revoked.",
+      "code_changes": [
+        {
+          "file_name": "whitelister/entries.py",
+          "fixed_code": "        if \"removed_at\" not in {r[\"name\"] for r in self._conn.execute(\"PRAGMA table_info(invite_addresses)\")}:\n            self._conn.execute(\"ALTER TABLE invite_addresses ADD COLUMN removed_at TEXT\")\n            # Removals made before this column existed left no mark: take them from the history, so a link\n            # that is still open cannot bring back an address the operator deleted on the older version.\n            self._conn.execute(\n                \"\"\"\n                UPDATE invite_addresses SET removed_at = (\n                    SELECT e.at FROM events e WHERE e.network = invite_addresses.network ORDER BY e.id DESC LIMIT 1\n                )\n                WHERE removed_at IS NULL\n                  AND NOT EXISTS (SELECT 1 FROM entries x WHERE x.network = invite_addresses.network)\n                  AND (SELECT e.action FROM events e WHERE e.network = invite_addresses.network ORDER BY e.id DESC LIMIT 1) = 'delete'\n                \"\"\"\n            )\n"
+        }
+      ]
+    },
+    "severity": {
+      "likelihood": {
+        "score": "low",
+        "reason": "Needs a deletion of a link-added entry on 0.4.1/0.4.2 without revoking the link, an upgrade while that link is still open (links live at most 30 days; 0.4.1 to 0.4.3 carry the same changelog date), and the guest pressing the button again from the same address."
+      },
+      "impact": {
+        "score": "low",
+        "reason": "One address the operator had explicitly removed is whitelisted again for the link's access period. It is the guest's own address, shown in the history, and the operator can delete it again (which then sticks) or revoke the link. No other address, no budget bypass for new addresses."
+      },
+      "overall_severity": "low"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Complete source trace with all line references checked, old schema compared against commit 4ce6e0d, and an independent in-sandbox reproduction with a control for the current deletion path. The legacy database was built by hand to that schema, not produced by running 0.4.2."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "whitelister/security.py:LoginThrottle.global-budget-locks-all-clients",
+    "title": "Anonymous clients can close the operator login for everyone through the shared failure budget",
+    "description": "The login throttle counts wrong passwords from all clients in one process-wide one-minute window. When the 31st failure of a window is recorded, every login attempt is refused for 60 seconds, including the correct password from an address that never failed. At the default of three failures per address a client needs about eleven throttle keys (IPv4 addresses, or /64s of one IPv6 prefix) and 31 small requests to do this. Refused attempts are not counted, so the lock cannot be extended while it is active: it ends 60 seconds after the last counted failure and the client must then spend 31 new failures, mostly from fresh keys because used keys carry doubling per-address locks. Repeating this keeps the login closed most of the time, with a short opening each cycle whose length is the time the client needs for 31 attempts. While it lasts nobody can open a new operator session; existing sessions keep working, and /ips.txt and invitation links do not use this throttle. The shared lock is intentional and documented in the README as a defence against distributed guessing; the cost is that the same budget lets any anonymous client lock the operator out. The invitation throttle is built with global_budget=None for exactly that reason.",
+    "root_cause": "LoginThrottle.record_failure sets one _global_until for the whole process when the per-minute failure count from all keys exceeds global_budget, and retry_after applies that value to every key before the password is looked at. Nothing distinguishes the clients that caused the failures from an uninvolved client, and nothing lets a correct password or a previously successful browser pass.",
+    "intended_behavior": "Failed attempts by one client should limit that client and bound the server's hashing work without removing the operator's ability to log in with the correct password from another address.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "whitelister/app.py",
+        "line": 470,
+        "scope": "create_app.login",
+        "description": "Anonymous POST /login with a wrong password; it passes same_origin (no Origin or Sec-Fetch-Site header needed) and gets a per-address throttle key at line 476."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/app.py",
+        "line": 491,
+        "scope": "create_app.login",
+        "description": "Each wrong password calls throttle.record_failure(key)."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/security.py",
+        "line": 189,
+        "scope": "LoginThrottle.record_failure",
+        "description": "When the window count from all keys exceeds global_budget (30), _global_until is set to now + 60 for the whole process."
+      },
+      {
+        "kind": "propagation",
+        "file": "whitelister/security.py",
+        "line": 164,
+        "scope": "LoginThrottle.retry_after",
+        "description": "retry_after starts from the global lock and takes the maximum with the caller's own lock, so every key gets a non-zero wait."
+      },
+      {
+        "kind": "sink",
+        "file": "whitelister/app.py",
+        "line": 482,
+        "scope": "create_app.login",
+        "description": "A non-zero wait returns 429 before the password is checked: the operator's correct password is refused and no session is created."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "whitelister/security.py",
+        "line": 186,
+        "description": "Process-wide one-minute failure window (lines 186-188) and the global lock it sets (189-191)."
+      },
+      {
+        "file": "whitelister/security.py",
+        "line": 160,
+        "description": "retry_after applies the global lock to every key."
+      },
+      {
+        "file": "whitelister/app.py",
+        "line": 120,
+        "description": "The login throttle is built with the default global_budget of 30; line 123 builds the invitation throttle with global_budget=None, with a comment that a shared lock would let strangers lock every guest out."
+      },
+      {
+        "file": "whitelister/app.py",
+        "line": 480,
+        "description": "The lock is checked before the password, and a refused attempt returns before record_failure, so a correct password does not pass and refused attempts do not extend the lock."
+      },
+      {
+        "file": "whitelister/config.py",
+        "line": 223,
+        "description": "Defaults: LOGIN_MAX_FAILURES 3, LOGIN_LOCK_SECONDS 30; the shared budget of 30 has no setting."
+      },
+      {
+        "file": "README.md",
+        "line": 52,
+        "description": "The shared budget is documented as closing the login for a minute for all clients (lines 52-54)."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authentication_level",
+        "description": "None: any client that can reach POST /login."
+      },
+      {
+        "kind": "network_routing",
+        "description": "Requests must arrive under several throttle keys: about eleven per cycle at the default LOGIN_MAX_FAILURES=3 (IPv4 addresses, or /64s of one IPv6 prefix), and mostly fresh keys for each further cycle."
+      },
+      {
+        "kind": "environmental_dependency",
+        "description": "A fronting BunkerWeb request limit or bad-behaviour ban acts per address and may slow the client; it is outside this repository and was not observed."
+      },
+      {
+        "kind": "data_state",
+        "description": "The operator has no valid session at that moment; existing sessions are not affected."
+      },
+      {
+        "kind": "timing_dependency",
+        "description": "Each lock lasts 60 seconds and cannot be extended while active; the login is open between cycles for as long as the client needs to record 31 new failures."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "Anonymous internet client with several source addresses, no password and no invitation link.",
+      "payloads": [
+        "POST /login with form body password=wrong-N-J, three times from each of 2001:db8:0:0::1 ... 2001:db8:0:a::1",
+        "POST /login with the correct password from 198.51.100.20"
+      ],
+      "instructions": [
+        "Build the app in-process with default throttle settings, a dummy plain password, TRUSTED_PROXIES=none and an empty data directory; drive it through an in-process ASGI transport with a chosen peer address per client. Build a second, untouched instance as a control.",
+        "Log in once with the correct password from 198.51.100.10 and keep the session cookie.",
+        "Send three wrong-password posts from each of eleven peers in different /64s.",
+        "Send one post with the correct password from 198.51.100.20, which was not used before, and the same post to the control instance.",
+        "Request / with the session cookie from the second step.",
+        "Step LoginThrottle(3, 30) with a synthetic clock: 31 failures from 31 keys, then ask retry_after for an unused key shortly after and 60.1 seconds after the last failure."
+      ],
+      "observed_result": "The 33 wrong posts returned 401 thirty-one times, then 429 twice. The correct password from 198.51.100.20 returned 429 without a session cookie; the control instance returned 303 with a session cookie. The session opened beforehand still got 200 on /. With the synthetic clock an unused key had retry_after 60 right after the 31st failure and 0 at 60.1 seconds after it; 30 failures in one window left an unused key at 0."
+    },
+    "remediation": {
+      "strategy": "Keep the per-address lock and the two-slot hashing cap as the CPU bound, and stop the shared budget from refusing clients that did not contribute to it. Preferred: set a signed long-lived 'this browser has logged in before' cookie on a successful login and let requests carrying it bypass only the shared lock (their own per-address lock still applies). Alternative: when the budget is exceeded, refuse only keys that already have a recorded failure; note that this lets a client with many fresh keys keep guessing at one attempt per key, bounded by the hashing cap rather than by the budget. Add a regression test in which 31 failures from other addresses are followed by a successful login with the correct password from the exempted client."
+    },
+    "severity": {
+      "likelihood": {
+        "score": "medium",
+        "reason": "Unauthenticated and cheap (31 small requests per cycle), but it needs several source addresses or a routed IPv6 prefix and a reason to target a single-operator tool; a fronting WAF may slow it."
+      },
+      "impact": {
+        "score": "low",
+        "reason": "Only new operator logins are refused; existing sessions, the list download and invitation links continue, no data is exposed or changed, each lock ends after 60 seconds without further action, and the login reopens briefly between cycles."
+      },
+      "overall_severity": "low"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Reproduced in-process in the sandbox against the current source with default settings and a control instance; the behaviour is also stated in the README and the class docstring. The effect of a fronting BunkerWeb was not observed."
+    }
+  }
+]

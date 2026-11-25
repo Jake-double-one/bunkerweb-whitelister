@@ -156,6 +156,7 @@
   "invite.summary": "{access} access per address · link until {until}",
   "invite.used": "{used} of {max} addresses used",
   "invite.used_unlimited": "{used} addresses, no limit",
+  "invite.used_ceiling": "{used} addresses, the most one link can add",
   "invite.redeemed_at": "last used {date}",
   "invite.revoke": "Revoke",
   "invite.revoke_confirm": "Revoke the link for {name}? Addresses already on the list stay until they expire.",

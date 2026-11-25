@@ -1,0 +1,27 @@
+{
+  "run_id": "bunkerweb-whitelister-run-3",
+  "repo": "Jake-double-one/bunkerweb-whitelister",
+  "source_ref": "0e90ff486613c47f5951ccb13c239da522e6c1b9",
+  "profile": "standard",
+  "scope_paths": [
+    "whitelister/",
+    "tests/",
+    "Dockerfile",
+    "docker-compose.example.yml",
+    ".env.example",
+    ".github/",
+    "requirements.txt",
+    "requirements.in",
+    "scripts/",
+    "pyproject.toml"
+  ],
+  "execution_policy": "sandboxed-source-and-local-only",
+  "run_status": "complete",
+  "started_at": "2026-11-25T17:16:45+00:00",
+  "completed_at": "2026-11-25T17:33:24+00:00",
+  "waves": 1,
+  "hunters": 16,
+  "verifiers_phase3": 10,
+  "verifiers_phase5": 10,
+  "discarded_agent_outputs": []
+}

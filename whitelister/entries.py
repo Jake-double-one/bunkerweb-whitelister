@@ -18,6 +18,8 @@ MAX_LABEL = 64
 _MAX_EVENTS = 200
 _MAX_INVITES = 100
 _MAX_ENTRIES = 5000
+_INVITE_RESERVE = 500  # rows of the list that invitation links may not take
+INVITE_UNLIMITED_CEILING = 1000  # a link "without a fixed number" still stops here (the largest number one can set)
 
 
 class ValidationError(ValueError):
@@ -124,7 +126,11 @@ class Invite:
 
     @property
     def remaining(self) -> int | None:
-        return None if self.max_addresses == 0 else max(self.max_addresses - self.used, 0)
+        """Addresses the link can still add; ``None`` for "no fixed number". Even such a link stops at
+        ``INVITE_UNLIMITED_CEILING`` addresses, so one link can never fill the whole list."""
+        if self.max_addresses == 0:
+            return None if self.used < INVITE_UNLIMITED_CEILING else 0
+        return max(self.max_addresses - self.used, 0)
 
 
 def _dt(value: str | None) -> datetime | None:
@@ -200,6 +206,40 @@ class EntryStore:
         if "removed_at" not in {r["name"] for r in self._conn.execute("PRAGMA table_info(invite_addresses)")}:
             self._conn.execute("ALTER TABLE invite_addresses ADD COLUMN removed_at TEXT")
         self._conn.execute("PRAGMA foreign_keys=ON")
+        self._backfill_removed()
+
+    def _backfill_removed(self) -> None:
+        """Once per database: removals made before the removal mark existed (before 0.4.3) left no mark, so
+        the link that had added the address could bring it back. Mark every link address that has no entry
+        and whose latest history line says the operator removed it. The history keeps 200 lines; older
+        removals cannot be told apart from entries that simply ran out and stay renewable."""
+        if self._conn.execute("SELECT 1 FROM meta WHERE key = 'removed_backfill'").fetchone():
+            return
+        rows = self._conn.execute(
+            """
+            SELECT DISTINCT a.network FROM invite_addresses a
+            WHERE a.removed_at IS NULL AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.network = a.network)
+            """
+        ).fetchall()
+        for row in rows:
+            last = self._conn.execute(
+                "SELECT action, at FROM events WHERE network = ? ORDER BY id DESC LIMIT 1", (row["network"],)
+            ).fetchone()
+            if last is not None and last["action"] == "delete":
+                self._conn.execute(
+                    "UPDATE invite_addresses SET removed_at = ? WHERE network = ? AND removed_at IS NULL", (last["at"], row["network"])
+                )
+        # 0.4.3 to 0.4.6 kept the mark when the operator listed the address by hand again and merely
+        # ignored it while that entry was active. The mark now counts on its own, so lift it there.
+        self._conn.execute(
+            """
+            UPDATE invite_addresses SET removed_at = NULL
+            WHERE removed_at IS NOT NULL AND EXISTS (
+                SELECT 1 FROM entries e WHERE e.network = invite_addresses.network AND e.created_by NOT LIKE 'invite:%'
+            )
+            """
+        )
+        self._conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('removed_backfill', '1')")
 
     def close(self) -> None:
         self._conn.close()
@@ -239,7 +279,9 @@ class EntryStore:
     def upsert(self, network: str, label: str, expires_at: datetime | None, now: datetime, created_by: str) -> Entry:
         """Create the entry or, when the network exists, replace label and expiry."""
         with self._lock:
-            if self._conn.execute("SELECT COUNT(*) FROM entries").fetchone()[0] >= _MAX_ENTRIES:
+            known = self._conn.execute("SELECT 1 FROM entries WHERE network = ?", (network,)).fetchone()
+            # the cap is about new rows: an entry that exists can always be changed, also on a full list
+            if known is None and self._conn.execute("SELECT COUNT(*) FROM entries").fetchone()[0] >= _MAX_ENTRIES:
                 raise ValidationError("error.too_many_entries", max=_MAX_ENTRIES)
             self._conn.execute(
                 """
@@ -415,6 +457,16 @@ class EntryStore:
             return None
         return "removed" if row["removed_at"] else "known"
 
+    def invite_forget_removal(self, network: str) -> None:
+        """The operator listed the address by hand again: links that had added it may renew it once more."""
+        with self._lock:
+            self._conn.execute("UPDATE invite_addresses SET removed_at = NULL WHERE network = ? AND removed_at IS NOT NULL", (network,))
+
+    def has_room_for_invite(self) -> bool:
+        """Links stop adding new entries a little before the list is full; the rest is kept for the operator."""
+        reserve = min(_INVITE_RESERVE, _MAX_ENTRIES // 10)
+        return self.count() < _MAX_ENTRIES - reserve
+
     def invite_touch_address(self, invite_id: int, network: str, now: datetime) -> bool:
         """Record a redemption; True when the address is new to this invite (and counts against its budget)."""
         with self._lock:
@@ -451,6 +503,11 @@ class EntryStore:
     def session_delete(self, sid: str) -> None:
         with self._lock:
             self._conn.execute("DELETE FROM sessions WHERE sid = ?", (sid,))
+
+    def sessions_clear(self) -> int:
+        """End every session (the password changed)."""
+        with self._lock:
+            return self._conn.execute("DELETE FROM sessions").rowcount
 
     def sessions_purge(self, now: datetime) -> None:
         with self._lock:
